@@ -370,9 +370,9 @@ public final class MainActivity extends Activity {
                     : Bitmap.createScaledBitmap(source, targetWidth, targetHeight, true);
             try {
                 List<Candle> candles = extractCandles(bitmap);
-                if (candles.size() < 18) {
+                if (candles.size() < 14) {
                     return AnalysisResult.waiting("Chart not ready", candles.size(), 0,
-                            "Zoom chart until 20+ red/green candles are visible");
+                            "Keep at least 14 detected red/green candles visible");
                 }
 
                 if (candles.size() > 45) candles = new ArrayList<>(candles.subList(candles.size() - 45, candles.size()));
