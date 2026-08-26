@@ -35,7 +35,10 @@ import java.util.concurrent.Executors;
  * injects trade actions, or sends captured frames to a server.
  */
 public final class MainActivity extends Activity {
-    private static final String START_URL = "https://qxbroker.com/en/";
+    private static final String[] START_URLS = {
+            "https://quotex.io/en/",
+            "https://qxbroker.com/en/"
+    };
     private static final long SCAN_INTERVAL_MS = 2500L;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -49,6 +52,9 @@ public final class MainActivity extends Activity {
     private volatile boolean pageReady;
     private volatile boolean scanning = true;
     private volatile boolean analysisBusy;
+    private int startUrlIndex;
+    private String activeMainUrl = START_URLS[0];
+    private String failedMainUrl = "";
 
     private final Runnable scanLoop = new Runnable() {
         @Override public void run() {
@@ -62,7 +68,7 @@ public final class MainActivity extends Activity {
         getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setContentView(buildUi());
         configureWebView();
-        webView.loadUrl(START_URL);
+        loadStartUrl(0);
         mainHandler.postDelayed(scanLoop, 3500L);
     }
 
@@ -155,11 +161,38 @@ public final class MainActivity extends Activity {
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
 
         webView.setWebViewClient(new WebViewClient() {
+            @Override public void onPageStarted(WebView view, String url, Bitmap favicon) {
+                activeMainUrl = url;
+                failedMainUrl = "";
+                pageReady = false;
+                connectionView.setText("LOADING");
+                connectionView.setTextColor(Color.rgb(245, 179, 66));
+            }
+
             @Override public void onPageFinished(WebView view, String url) {
+                if (!url.equals(activeMainUrl) || url.equals(failedMainUrl)) return;
                 pageReady = true;
                 connectionView.setText("LIVE PAGE");
                 connectionView.setTextColor(Color.rgb(80, 230, 169));
                 detailView.setText("Chart rendered inside app • Analysis stays on this device");
+            }
+
+            @Override public void onReceivedError(WebView view, WebResourceRequest request,
+                                                  android.webkit.WebResourceError error) {
+                if (!request.isForMainFrame()) return;
+                String failedUrl = request.getUrl().toString();
+                failedMainUrl = failedUrl;
+                pageReady = false;
+                if (startUrlIndex + 1 < START_URLS.length) {
+                    int nextIndex = startUrlIndex + 1;
+                    connectionView.setText("SWITCHING");
+                    showWait("Site unavailable", "Trying alternative official domain");
+                    mainHandler.postDelayed(() -> loadStartUrl(nextIndex), 500L);
+                } else {
+                    connectionView.setText("NETWORK ERROR");
+                    connectionView.setTextColor(Color.rgb(239, 83, 80));
+                    showWait("Connection failed", "Check internet or Private DNS, then reload");
+                }
             }
 
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -176,6 +209,14 @@ public final class MainActivity extends Activity {
                 showWait("Security block", "Unsafe redirect was blocked");
             }
         });
+    }
+
+    private void loadStartUrl(int index) {
+        startUrlIndex = Math.max(0, Math.min(index, START_URLS.length - 1));
+        activeMainUrl = START_URLS[startUrlIndex];
+        failedMainUrl = "";
+        pageReady = false;
+        webView.loadUrl(activeMainUrl);
     }
 
     private boolean isQuotexHost(String host) {
