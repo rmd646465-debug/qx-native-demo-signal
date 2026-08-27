@@ -30,3 +30,16 @@ APK বানানোর সহজ নিয়ম
 - signal না মিললে WAIT দেখানো স্বাভাবিক এবং নিরাপদ আচরণ।
 - অন্তত ১০০টি demo signal লিখে result যাচাই না করে real-money সিদ্ধান্ত নেবেন না।
 - ১০টির মধ্যে ৮টি profit বা কোনো profit নিশ্চিত নয়।
+v2.2 LIVE DEMO PAGE FIX
+=======================
+
+- App এখন marketing home page নয়, official /en/demo-trade page সরাসরি খোলে।
+- qxbroker.com থেকে market-qx.trade / market-qx.pro-তে official redirect হলেও
+  app সেটিকে LIVE DEMO হিসেবে গ্রহণ করে এবং chart analysis শুরু করে।
+- DNS, 403, 429 বা server error হলে চারটি official address পর্যায়ক্রমে চেষ্টা করে।
+- Custom bot user-agent সরানো হয়েছে; normal Android WebView identity ব্যবহার হয়।
+- Currency/asset বদলানো যাবে Quotex-এর নিজের live page-এর selector থেকে।
+- Selected asset/session রেখে RELOAD CHART কাজ করে।
+
+সীমা: Quotex-এর private AI/API app-এর মধ্যে কপি করা হয়নি। Signal হলো on-device
+multi-filter candle analysis; profit বা 8/10 win guarantee নয়। Demo-তে test করুন।
