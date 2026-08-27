@@ -24,6 +24,10 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import org.json.JSONArray;
+import org.json.JSONTokener;
+import org.json.JSONObject;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -31,6 +35,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.function.Consumer;
 
 /**
  * Demo-only on-device chart reader. It loads the official Quotex web page in a
@@ -57,9 +62,15 @@ public final class MainActivity extends Activity {
     private TextView detailView;
     private TextView connectionView;
     private Button toggleButton;
+    private Button assetScanButton;
     private volatile boolean pageReady;
     private volatile boolean scanning = true;
     private volatile boolean analysisBusy;
+    private boolean assetScanActive;
+    private final List<String> assetQueue = new ArrayList<>();
+    private final List<AssetScanResult> assetScanResults = new ArrayList<>();
+    private int assetScanIndex;
+    private String currentAssetName = "CURRENT ASSET";
     private String lastCandidate = "WAIT";
     private int candidateStreak;
     private int startUrlIndex;
@@ -68,7 +79,10 @@ public final class MainActivity extends Activity {
 
     private final Runnable scanLoop = new Runnable() {
         @Override public void run() {
-            if (scanning && pageReady && !analysisBusy) captureAndAnalyze();
+            if (scanning && pageReady && !analysisBusy && !assetScanActive) {
+                refreshCurrentAssetName(null);
+                captureAndAnalyze();
+            }
             mainHandler.postDelayed(this, SCAN_INTERVAL_MS);
         }
     };
@@ -134,6 +148,18 @@ public final class MainActivity extends Activity {
         });
         controls.addView(toggleButton, new LinearLayout.LayoutParams(0, dp(46), 1f));
 
+        assetScanButton = button("AUTO SCAN", Color.rgb(113, 74, 181));
+        assetScanButton.setOnClickListener(v -> {
+            if (assetScanActive) {
+                stopAssetScan("Asset scan stopped", "Current chart analysis continues");
+            } else {
+                beginAssetScan();
+            }
+        });
+        LinearLayout.LayoutParams scanParams = new LinearLayout.LayoutParams(0, dp(46), 1f);
+        scanParams.setMarginStart(dp(6));
+        controls.addView(assetScanButton, scanParams);
+
         Button reload = button("RELOAD CHART", Color.rgb(33, 97, 156));
         reload.setOnClickListener(v -> {
             pageReady = false;
@@ -143,7 +169,7 @@ public final class MainActivity extends Activity {
             else loadStartUrl(0, true);
         });
         LinearLayout.LayoutParams reloadParams = new LinearLayout.LayoutParams(0, dp(46), 1f);
-        reloadParams.setMarginStart(dp(8));
+        reloadParams.setMarginStart(dp(6));
         controls.addView(reload, reloadParams);
         root.addView(controls);
 
@@ -263,6 +289,7 @@ public final class MainActivity extends Activity {
         connectionView.setText("LIVE PAGE");
         connectionView.setTextColor(Color.rgb(80, 230, 169));
         detailView.setText("Official demo page • 15-layer on-device analysis");
+        refreshCurrentAssetName(null);
     }
 
     private void loadStartUrl(int index, boolean clearFailure) {
@@ -311,17 +338,209 @@ public final class MainActivity extends Activity {
         return host.equals(domain) || host.endsWith("." + domain);
     }
 
+    private String visibleAssetScript() {
+        return "(function(){const re=/([A-Z]{3})\\s*\\/\\s*([A-Z]{3})/i;"
+                + "let best='',area=1e30;for(const e of document.querySelectorAll('body *')){"
+                + "const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
+                + "if(r.width<18||r.height<8||r.bottom<0||r.top>innerHeight||s.display==='none'||s.visibility==='hidden')continue;"
+                + "const t=(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim().toUpperCase();"
+                + "if(t.length>80)continue;const m=t.match(re);if(!m)continue;"
+                + "const a=r.width*r.height;if(a<area){area=a;best=m[1]+'/'+m[2]+(t.includes('OTC')?' (OTC)':'');}}"
+                + "return best;})()";
+    }
+
+    private String openAssetListScript() {
+        return "(function(){const re=/([A-Z]{3})\\s*\\/\\s*([A-Z]{3})/i;let all=[];"
+                + "for(const e of document.querySelectorAll('body *')){const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
+                + "if(r.width<18||r.height<8||r.bottom<0||r.top>innerHeight||s.display==='none'||s.visibility==='hidden')continue;"
+                + "const t=(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim();"
+                + "if(t.length<=80&&re.test(t))all.push({e:e,a:r.width*r.height});}"
+                + "all.sort((x,y)=>x.a-y.a);if(!all.length)return false;let t=all[0].e;"
+                + "for(let i=0;i<5&&t.parentElement;i++){const p=t.parentElement,pt=(p.innerText||'').trim();"
+                + "if(pt.length>160)break;if(getComputedStyle(p).cursor==='pointer'||p.getAttribute('role')==='button'||p.onclick){t=p;break;}t=p;}"
+                + "t.click();return true;})()";
+    }
+
+    private String collectVisibleAssetsScript() {
+        return "(function(){const re=/([A-Z]{3})\\s*\\/\\s*([A-Z]{3})/i,map=new Map();"
+                + "for(const e of document.querySelectorAll('body *')){const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
+                + "if(r.width<18||r.height<8||r.bottom<0||r.top>innerHeight||s.display==='none'||s.visibility==='hidden')continue;"
+                + "const t=(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim().toUpperCase();"
+                + "if(t.length>100)continue;const m=t.match(re);if(!m)continue;const pair=m[1]+'/'+m[2];"
+                + "const name=pair+(t.includes('OTC')?' (OTC)':'');if(!map.has(pair)||name.includes('OTC'))map.set(pair,name);}"
+                + "return Array.from(map.values()).slice(0,12);})()";
+    }
+
+    private String selectAssetScript(String asset) {
+        String wanted = JSONObject.quote(asset.replace(" (OTC)", "").trim().toUpperCase());
+        return "(function(){const want=" + wanted
+                + ",re=/([A-Z]{3})\\s*\\/\\s*([A-Z]{3})/i;let all=[];"
+                + "for(const e of document.querySelectorAll('body *')){const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
+                + "if(r.width<18||r.height<8||r.bottom<0||r.top>innerHeight||s.display==='none'||s.visibility==='hidden')continue;"
+                + "const t=(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim();if(t.length>100)continue;"
+                + "const m=t.match(re);if(!m||m[1].toUpperCase()+'/'+m[2].toUpperCase()!==want)continue;"
+                + "all.push({e:e,a:r.width*r.height});}all.sort((x,y)=>x.a-y.a);if(!all.length)return false;"
+                + "let t=all[0].e;for(let i=0;i<5&&t.parentElement;i++){const p=t.parentElement,pt=(p.innerText||'').trim();"
+                + "if(pt.length>160)break;if(getComputedStyle(p).cursor==='pointer'||p.getAttribute('role')==='button'||p.onclick){t=p;break;}t=p;}"
+                + "t.click();return true;})()";
+    }
+
+    private void refreshCurrentAssetName(Runnable after) {
+        if (webView == null || !pageReady) {
+            if (after != null) after.run();
+            return;
+        }
+        webView.evaluateJavascript(visibleAssetScript(), value -> {
+            try {
+                Object parsed = new JSONTokener(value).nextValue();
+                if (parsed instanceof String && !((String) parsed).trim().isEmpty()) {
+                    currentAssetName = ((String) parsed).trim();
+                }
+            } catch (Throwable ignored) {
+                // The current-chart analyzer remains usable if page labels change.
+            }
+            if (after != null) after.run();
+        });
+    }
+
+    private void beginAssetScan() {
+        if (!pageReady || webView == null) {
+            showWait("Live demo not ready", "Open DEMO chart, then tap AUTO SCAN");
+            return;
+        }
+        assetScanActive = true;
+        assetQueue.clear();
+        assetScanResults.clear();
+        assetScanIndex = 0;
+        lastCandidate = "WAIT";
+        candidateStreak = 0;
+        assetScanButton.setText("STOP SCAN");
+        showWait("Opening currency list", "Reading visible/open Quotex assets only");
+        webView.evaluateJavascript(openAssetListScript(), ignored ->
+                mainHandler.postDelayed(this::collectAssetQueue, 900L));
+    }
+
+    private void collectAssetQueue() {
+        if (!assetScanActive) return;
+        webView.evaluateJavascript(collectVisibleAssetsScript(), value -> {
+            try {
+                JSONArray array = new JSONArray(value);
+                for (int i = 0; i < array.length(); i++) {
+                    String asset = array.optString(i, "").trim();
+                    if (!asset.isEmpty() && !assetQueue.contains(asset)) assetQueue.add(asset);
+                }
+            } catch (Throwable ignored) {
+                assetQueue.clear();
+            }
+            if (assetQueue.isEmpty()) {
+                stopAssetScan("Currency list unavailable",
+                        "Current chart mode is safe • open the asset list and retry");
+                return;
+            }
+            scanNextAsset();
+        });
+    }
+
+    private void scanNextAsset() {
+        if (!assetScanActive) return;
+        if (assetScanIndex >= assetQueue.size()) {
+            finishAssetScan();
+            return;
+        }
+        String asset = assetQueue.get(assetScanIndex);
+        showWait("Scanning " + (assetScanIndex + 1) + "/" + assetQueue.size(),
+                asset + " • two rendered-chart confirmations");
+        Consumer<Boolean> selected = ok -> {
+            if (!assetScanActive) return;
+            if (!ok) {
+                assetScanIndex++;
+                scanNextAsset();
+                return;
+            }
+            currentAssetName = asset;
+            mainHandler.postDelayed(() -> scanFirstFrame(asset), CHART_WARMUP_MS);
+        };
+        if (assetScanIndex == 0) selectVisibleAsset(asset, selected);
+        else openThenSelectAsset(asset, selected);
+    }
+
+    private void openThenSelectAsset(String asset, Consumer<Boolean> callback) {
+        webView.evaluateJavascript(openAssetListScript(), ignored ->
+                mainHandler.postDelayed(() -> selectVisibleAsset(asset, callback), 650L));
+    }
+
+    private void selectVisibleAsset(String asset, Consumer<Boolean> callback) {
+        webView.evaluateJavascript(selectAssetScript(asset), value ->
+                callback.accept("true".equalsIgnoreCase(value)));
+    }
+
+    private void scanFirstFrame(String asset) {
+        if (!assetScanActive) return;
+        captureAndAnalyze(first -> {
+            if (!assetScanActive) return;
+            mainHandler.postDelayed(() -> captureAndAnalyze(second -> {
+                if (!assetScanActive) return;
+                AnalysisResult stable = second;
+                if (!first.direction.equals(second.direction)
+                        || ("WAIT".equals(first.direction) && !first.status.equals(second.status))) {
+                    stable = AnalysisResult.waiting("Unstable setup",
+                            Math.max(first.candles, second.candles), second.rsi,
+                            "Two scans did not agree • skipped");
+                }
+                assetScanResults.add(new AssetScanResult(asset, stable));
+                assetScanIndex++;
+                scanNextAsset();
+            }), SCAN_INTERVAL_MS);
+        });
+    }
+
+    private void finishAssetScan() {
+        AssetScanResult best = null;
+        for (AssetScanResult candidate : assetScanResults) {
+            if ("WAIT".equals(candidate.result.direction)) continue;
+            if (best == null || candidate.result.strength > best.result.strength) best = candidate;
+        }
+        assetScanActive = false;
+        assetScanButton.setText("AUTO SCAN");
+        if (best == null) {
+            currentAssetName = "SCANNED " + assetScanResults.size() + " ASSETS";
+            renderResult(AnalysisResult.waiting("No high-confirmation asset", 0, 0,
+                    "All scanned setups were WAIT • no forced signal"));
+            return;
+        }
+        AssetScanResult winner = best;
+        currentAssetName = winner.asset;
+        renderResult(winner.result);
+        openThenSelectAsset(winner.asset, ignored -> { });
+    }
+
+    private void stopAssetScan(String status, String detail) {
+        assetScanActive = false;
+        assetQueue.clear();
+        assetScanResults.clear();
+        assetScanButton.setText("AUTO SCAN");
+        showWait(status, detail);
+    }
+
     private void captureAndAnalyze() {
+        captureAndAnalyze(null);
+    }
+
+    private void captureAndAnalyze(Consumer<AnalysisResult> receiver) {
         int width = webView.getWidth();
         int height = webView.getHeight();
-        if (width < 200 || height < 300) return;
+        if (width < 200 || height < 300) {
+            deliverAnalysis(receiver, AnalysisResult.waiting("Chart size unavailable", 0, 0,
+                    "Reload chart and try again"));
+            return;
+        }
         analysisBusy = true;
         final Bitmap frame;
         try {
             frame = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
         } catch (Throwable error) {
-            analysisBusy = false;
-            showWait("Capture unavailable", "Reload chart and try again");
+            deliverAnalysis(receiver, AnalysisResult.waiting("Capture unavailable", 0, 0,
+                    "Reload chart and try again"));
             return;
         }
 
@@ -336,21 +555,21 @@ public final class MainActivity extends Activity {
         try {
             PixelCopy.request(getWindow(), source, frame, copyResult -> {
                 if (copyResult == PixelCopy.SUCCESS) {
-                    analyzeFrame(frame);
+                    analyzeFrame(frame, receiver);
                 } else {
                     frame.recycle();
-                    analysisBusy = false;
-                    showWait("Capture retry", "Chart frame not ready • automatic retry");
+                    deliverAnalysis(receiver, AnalysisResult.waiting("Capture retry", 0, 0,
+                            "Chart frame not ready • automatic retry"));
                 }
             }, mainHandler);
         } catch (Throwable error) {
             frame.recycle();
-            analysisBusy = false;
-            showWait("Capture unavailable", "Reload chart and try again");
+            deliverAnalysis(receiver, AnalysisResult.waiting("Capture unavailable", 0, 0,
+                    "Reload chart and try again"));
         }
     }
 
-    private void analyzeFrame(Bitmap frame) {
+    private void analyzeFrame(Bitmap frame, Consumer<AnalysisResult> receiver) {
         analyzerExecutor.execute(() -> {
             AnalysisResult result;
             try {
@@ -361,11 +580,14 @@ public final class MainActivity extends Activity {
                 frame.recycle();
             }
             AnalysisResult finalResult = result;
-            runOnUiThread(() -> {
-                renderResult(stabilize(finalResult));
-                analysisBusy = false;
-            });
+            runOnUiThread(() -> deliverAnalysis(receiver, finalResult));
         });
+    }
+
+    private void deliverAnalysis(Consumer<AnalysisResult> receiver, AnalysisResult result) {
+        analysisBusy = false;
+        if (receiver != null) receiver.accept(result);
+        else renderResult(stabilize(result));
     }
 
     private AnalysisResult stabilize(AnalysisResult result) {
@@ -401,10 +623,24 @@ public final class MainActivity extends Activity {
         }
         signalView.setText(symbol);
         signalView.setTextColor(color);
-        strengthView.setText(result.strength > 0
-                ? result.status + " • " + result.strength + "% setup strength"
-                : result.status);
-        detailView.setText("Detected " + result.candles + " candles • RSI " + result.rsi + " • " + result.detail);
+        if (result.strength > 0) {
+            int minutes = suggestedExpiryMinutes(result);
+            strengthView.setText(currentAssetName + " • " + result.direction
+                    + " • " + minutes + " MIN DEMO");
+            detailView.setText(result.strength + "% setup strength • Detected "
+                    + result.candles + " candles • RSI " + result.rsi);
+        } else {
+            strengthView.setText(currentAssetName + " • " + result.status);
+            detailView.setText("Detected " + result.candles + " candles • RSI "
+                    + result.rsi + " • " + result.detail);
+        }
+    }
+
+    private int suggestedExpiryMinutes(AnalysisResult result) {
+        if (result.strength >= 90) return 5;
+        if (result.strength >= 86) return 3;
+        if (result.strength >= 82) return 2;
+        return 1;
     }
 
     private void showWait(String status, String detail) {
@@ -459,6 +695,16 @@ public final class MainActivity extends Activity {
     @Override protected void onPause() {
         CookieManager.getInstance().flush();
         super.onPause();
+    }
+
+    private static final class AssetScanResult {
+        final String asset;
+        final AnalysisResult result;
+
+        AssetScanResult(String asset, AnalysisResult result) {
+            this.asset = asset;
+            this.result = result;
+        }
     }
 
     private static final class AnalysisResult {

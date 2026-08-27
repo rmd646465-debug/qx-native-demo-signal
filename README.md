@@ -85,6 +85,21 @@ create a bearish-only bias. Version 2:
 - Keeps the v2.6 12-candle minimum, balanced 8/15 confluence, two-scan
   confirmation and all symmetric safety filters unchanged.
 
+## Version 3.0 visible-asset scanner and expiry assistant
+
+- Keeps the complete embedded DEMO page and the existing current-chart analyzer.
+- Adds a separate `AUTO SCAN` mode. It opens the platform asset selector, reads
+  up to 12 currently visible/open currency names, switches only among those
+  currency elements, and analyzes two rendered chart frames per asset.
+- Ranks only stable UP/DOWN results, returns the strongest asset name and
+  direction, and brings that asset back into view. If none pass, it returns
+  WAIT instead of manufacturing a recommendation.
+- Shows a rule-based manual DEMO expiry suggestion of 1, 2, 3 or 5 minutes from
+  setup strength. The duration is not a win probability or guarantee.
+- The scanner never clicks UP/DOWN, never sets an investment and never places a
+  trade. If the platform changes its asset-list HTML, current-chart mode remains
+  available and the scanner reports that the list is unavailable.
+
 ## What it does
 
 - Shows the full official Quotex demo page inside the Android app, including

@@ -94,3 +94,16 @@ v2.7 RENDERED CHART CAPTURE FIX
   strategy নয়, frame capture-ই 0-candle সমস্যার মূল কারণ ছিল।
 - v2.6-এর ১২-candle minimum, balanced ৮/১৫ confluence, ২-scan confirmation,
   symmetric UP/DOWN এবং safety WAIT filters অপরিবর্তিত আছে।
+
+v3.0 AUTO ASSET SCANNER + EXPIRY ASSISTANT
+==========================================
+
+- আগের embedded DEMO page ও current-chart signal mode অক্ষত রাখা হয়েছে।
+- নতুন AUTO SCAN button demo page-এর asset selector খুলে বর্তমানে visible/open
+  সর্বোচ্চ ১২টি currency name পড়ে এবং একেকটি chart নিজে switch করে scan করে।
+- প্রতি asset-এ ২টি rendered frame একই direction দিলে তবেই stable UP/DOWN result
+  ধরা হয়; সব result থেকে সবচেয়ে শক্তিশালী currency name ও signal দেখায়।
+- Setup strength থেকে manual DEMO expiry ১/২/৩/৫ মিনিট suggest করে। এটি win
+  probability বা profit guarantee নয়।
+- Bot কখনো Up/Down trade button, investment বা order touch করে না। Asset-list
+  HTML বদলে scanner ব্যর্থ হলেও আগের current-chart analysis ব্যবহারযোগ্য থাকবে।
