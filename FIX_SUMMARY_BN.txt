@@ -1,0 +1,31 @@
+QX NATIVE DEMO SIGNAL v2 — বাংলা নির্দেশনা
+==========================================
+
+কী ঠিক করা হয়েছে
+-----------------
+১. পুরোনো অ্যাপ chart-এর নিচের লাল/সবুজ trade button-কেও candle pixel মনে করতে
+   পারত। এতে DOWN bias তৈরি হতো। v2 শুধু mobile chart band বিশ্লেষণ করে।
+২. UP এবং DOWN-এর scoring rule এখন পরস্পরের হুবহু mirror।
+৩. অস্বাভাবিক বড় coloured object candle হিসেবে বাদ দেওয়া হয়।
+৪. একই signal পরপর ২টি scan-এ না এলে UP/DOWN দেখায় না।
+৫. “confidence” নয়, “setup strength” দেখায়—এটি win probability নয়।
+৬. rising, falling এবং flat market-এর deterministic self-test যোগ করা হয়েছে।
+
+APK বানানোর সহজ নিয়ম
+---------------------
+১. ZIP extract করুন।
+২. পুরো qx-native-demo-signal-local folder একটি নতুন GitHub repository-তে upload করুন।
+৩. GitHub-এর Actions tab খুলুন।
+৪. “Build Android Demo APK” workflow চালান।
+৫. সফল run-এর Artifacts থেকে “QX-Native-Demo-APK-v2” download করুন।
+৬. ZIP খুলে app-debug.apk install করুন। পুরোনো APK signature conflict দিলে আগে
+   পুরোনো অ্যাপ uninstall করুন।
+
+ব্যবহারের নিয়ম
+--------------
+- শুধু demo account-এ পরীক্ষা করুন।
+- chart-এ অন্তত ১২টি red/green candle দৃশ্যমান রাখুন।
+- signal না মিললে WAIT দেখানো স্বাভাবিক এবং নিরাপদ আচরণ।
+- অন্তত ১০০টি demo signal লিখে result যাচাই না করে real-money সিদ্ধান্ত নেবেন না।
+- ১০টির মধ্যে ৮টি profit বা কোনো profit নিশ্চিত নয়।
+

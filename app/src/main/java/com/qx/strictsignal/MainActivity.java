@@ -35,26 +35,22 @@ import java.util.concurrent.Executors;
  * injects trade actions, or sends captured frames to a server.
  */
 public final class MainActivity extends Activity {
-    private static final String[] START_URLS = {
-            "https://quotex.io/en/",
-            "https://qxbroker.com/en/"
-    };
+    private static final String START_URL = "https://qxbroker.com/en/";
     private static final long SCAN_INTERVAL_MS = 2500L;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService analyzerExecutor = Executors.newSingleThreadExecutor();
     private WebView webView;
     private TextView signalView;
-    private TextView confidenceView;
+    private TextView strengthView;
     private TextView detailView;
     private TextView connectionView;
     private Button toggleButton;
     private volatile boolean pageReady;
     private volatile boolean scanning = true;
     private volatile boolean analysisBusy;
-    private int startUrlIndex;
-    private String activeMainUrl = START_URLS[0];
-    private String failedMainUrl = "";
+    private String lastCandidate = "WAIT";
+    private int candidateStreak;
 
     private final Runnable scanLoop = new Runnable() {
         @Override public void run() {
@@ -68,7 +64,7 @@ public final class MainActivity extends Activity {
         getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setContentView(buildUi());
         configureWebView();
-        loadStartUrl(0);
+        webView.loadUrl(START_URL);
         mainHandler.postDelayed(scanLoop, 3500L);
     }
 
@@ -82,7 +78,7 @@ public final class MainActivity extends Activity {
         header.setPadding(dp(14), dp(10), dp(10), dp(9));
         header.setBackgroundColor(Color.rgb(10, 18, 32));
 
-        TextView title = text("QX Native Demo Signal", 17, Color.WHITE, true);
+        TextView title = text("QX Native Demo Signal v2", 16, Color.WHITE, true);
         header.addView(title, new LinearLayout.LayoutParams(0, dp(44), 1f));
         connectionView = text("CONNECTING", 10, Color.rgb(245, 179, 66), true);
         connectionView.setGravity(Gravity.CENTER);
@@ -98,12 +94,12 @@ public final class MainActivity extends Activity {
 
         signalView = text("WAIT", 28, Color.rgb(245, 179, 66), true);
         signalView.setGravity(Gravity.CENTER);
-        confidenceView = text("Live chart loading…", 11, Color.rgb(171, 183, 201), false);
-        confidenceView.setGravity(Gravity.CENTER);
-        detailView = text("Official Quotex page • On-device pixel analysis • DEMO ONLY", 9, Color.rgb(114, 130, 153), false);
+        strengthView = text("Live chart loading…", 11, Color.rgb(171, 183, 201), false);
+        strengthView.setGravity(Gravity.CENTER);
+        detailView = text("Chart-only pixel analysis v2 • DEMO ONLY", 9, Color.rgb(114, 130, 153), false);
         detailView.setGravity(Gravity.CENTER);
         signalPanel.addView(signalView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38)));
-        signalPanel.addView(confidenceView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(22)));
+        signalPanel.addView(strengthView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(22)));
         signalPanel.addView(detailView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(20)));
         root.addView(signalPanel);
 
@@ -155,44 +151,17 @@ public final class MainActivity extends Activity {
         settings.setAllowContentAccess(false);
         settings.setMediaPlaybackRequiresUserGesture(true);
         settings.setMixedContentMode(android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        settings.setUserAgentString(settings.getUserAgentString() + " QXNativeDemo/1.0");
+        settings.setUserAgentString(settings.getUserAgentString() + " QXNativeDemo/2.0");
         WebView.setWebContentsDebuggingEnabled(false);
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
 
         webView.setWebViewClient(new WebViewClient() {
-            @Override public void onPageStarted(WebView view, String url, Bitmap favicon) {
-                activeMainUrl = url;
-                failedMainUrl = "";
-                pageReady = false;
-                connectionView.setText("LOADING");
-                connectionView.setTextColor(Color.rgb(245, 179, 66));
-            }
-
             @Override public void onPageFinished(WebView view, String url) {
-                if (!url.equals(activeMainUrl) || url.equals(failedMainUrl)) return;
                 pageReady = true;
                 connectionView.setText("LIVE PAGE");
                 connectionView.setTextColor(Color.rgb(80, 230, 169));
                 detailView.setText("Chart rendered inside app • Analysis stays on this device");
-            }
-
-            @Override public void onReceivedError(WebView view, WebResourceRequest request,
-                                                  android.webkit.WebResourceError error) {
-                if (!request.isForMainFrame()) return;
-                String failedUrl = request.getUrl().toString();
-                failedMainUrl = failedUrl;
-                pageReady = false;
-                if (startUrlIndex + 1 < START_URLS.length) {
-                    int nextIndex = startUrlIndex + 1;
-                    connectionView.setText("SWITCHING");
-                    showWait("Site unavailable", "Trying alternative official domain");
-                    mainHandler.postDelayed(() -> loadStartUrl(nextIndex), 500L);
-                } else {
-                    connectionView.setText("NETWORK ERROR");
-                    connectionView.setTextColor(Color.rgb(239, 83, 80));
-                    showWait("Connection failed", "Check internet or Private DNS, then reload");
-                }
             }
 
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -209,14 +178,6 @@ public final class MainActivity extends Activity {
                 showWait("Security block", "Unsafe redirect was blocked");
             }
         });
-    }
-
-    private void loadStartUrl(int index) {
-        startUrlIndex = Math.max(0, Math.min(index, START_URLS.length - 1));
-        activeMainUrl = START_URLS[startUrlIndex];
-        failedMainUrl = "";
-        pageReady = false;
-        webView.loadUrl(activeMainUrl);
     }
 
     private boolean isQuotexHost(String host) {
@@ -250,10 +211,28 @@ public final class MainActivity extends Activity {
             }
             AnalysisResult finalResult = result;
             runOnUiThread(() -> {
-                renderResult(finalResult);
+                renderResult(stabilize(finalResult));
                 analysisBusy = false;
             });
         });
+    }
+
+    private AnalysisResult stabilize(AnalysisResult result) {
+        if ("WAIT".equals(result.direction)) {
+            lastCandidate = "WAIT";
+            candidateStreak = 0;
+            return result;
+        }
+        if (result.direction.equals(lastCandidate)) candidateStreak++;
+        else {
+            lastCandidate = result.direction;
+            candidateStreak = 1;
+        }
+        if (candidateStreak < 2) {
+            return AnalysisResult.waiting("Confirming " + result.direction, result.candles,
+                    result.rsi, result.detail + " • need 2 stable scans");
+        }
+        return result;
     }
 
     private void renderResult(AnalysisResult result) {
@@ -271,8 +250,8 @@ public final class MainActivity extends Activity {
         }
         signalView.setText(symbol);
         signalView.setTextColor(color);
-        confidenceView.setText(result.confidence > 0
-                ? result.status + " • " + result.confidence + "% confidence"
+        strengthView.setText(result.strength > 0
+                ? result.status + " • " + result.strength + "% setup strength"
                 : result.status);
         detailView.setText("Detected " + result.candles + " candles • RSI " + result.rsi + " • " + result.detail);
     }
@@ -327,15 +306,15 @@ public final class MainActivity extends Activity {
 
     private static final class AnalysisResult {
         final String direction;
-        final int confidence;
+        final int strength;
         final int candles;
         final int rsi;
         final String status;
         final String detail;
 
-        AnalysisResult(String direction, int confidence, int candles, int rsi, String status, String detail) {
+        AnalysisResult(String direction, int strength, int candles, int rsi, String status, String detail) {
             this.direction = direction;
-            this.confidence = confidence;
+            this.strength = strength;
             this.candles = candles;
             this.rsi = rsi;
             this.status = status;
@@ -347,102 +326,72 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private static final class Candle {
-        final float x;
-        final float price;
-        final float height;
-        final boolean up;
-
-        Candle(float x, float price, float height, boolean up) {
-            this.x = x;
-            this.price = price;
-            this.height = height;
-            this.up = up;
-        }
-    }
-
     private static final class CandleAnalyzer {
         private static AnalysisResult analyze(Bitmap source) {
-            int targetWidth = Math.min(540, source.getWidth());
+            int targetWidth = Math.min(720, source.getWidth());
             int targetHeight = Math.max(1, Math.round(source.getHeight() * (targetWidth / (float) source.getWidth())));
             Bitmap bitmap = source.getWidth() == targetWidth
                     ? source
                     : Bitmap.createScaledBitmap(source, targetWidth, targetHeight, true);
             try {
-                List<Candle> candles = extractCandles(bitmap);
-                if (candles.size() < 14) {
+                List<SignalEngine.CandlePoint> candles = extractCandles(bitmap);
+                if (candles.size() < SignalEngine.MIN_CANDLES) {
                     return AnalysisResult.waiting("Chart not ready", candles.size(), 0,
-                            "Keep at least 14 detected red/green candles visible");
+                            "Keep at least 12 red/green candles visible");
                 }
 
-                if (candles.size() > 45) candles = new ArrayList<>(candles.subList(candles.size() - 45, candles.size()));
-                float[] prices = new float[candles.size()];
-                float averageHeight = 0f;
-                for (int i = 0; i < candles.size(); i++) {
-                    prices[i] = candles.get(i).price;
-                    averageHeight += candles.get(i).height;
+                int greenCount = 0;
+                int redCount = 0;
+                for (SignalEngine.CandlePoint candle : candles) {
+                    if (candle.up) greenCount++;
+                    else redCount++;
                 }
-                averageHeight = Math.max(2f, averageHeight / candles.size());
-
-                float shortSlope = regressionSlope(prices, Math.min(8, prices.length)) / averageHeight;
-                float longSlope = regressionSlope(prices, Math.min(18, prices.length)) / averageHeight;
-                float ema5 = ema(prices, 5);
-                float ema13 = ema(prices, 13);
-                int rsi = Math.round(rsi(prices));
-
-                int momentum = 0;
-                for (int i = Math.max(0, candles.size() - 7); i < candles.size(); i++) momentum += candles.get(i).up ? 1 : -1;
-                float latest = prices[prices.length - 1];
-                float priorMax = -Float.MAX_VALUE;
-                float priorMin = Float.MAX_VALUE;
-                for (int i = Math.max(0, prices.length - 9); i < prices.length - 1; i++) {
-                    priorMax = Math.max(priorMax, prices[i]);
-                    priorMin = Math.min(priorMin, prices[i]);
+                if (greenCount == 0 || redCount == 0) {
+                    return AnalysisResult.waiting("Colour check failed", candles.size(), 0,
+                            "Both green and red candles must be visible");
                 }
 
-                int votes = 0;
-                votes += shortSlope > 0.10f ? 1 : shortSlope < -0.10f ? -1 : 0;
-                votes += longSlope > 0.06f ? 1 : longSlope < -0.06f ? -1 : 0;
-                votes += ema5 > ema13 + averageHeight * 0.08f ? 1 : ema5 < ema13 - averageHeight * 0.08f ? -1 : 0;
-                votes += momentum >= 3 ? 1 : momentum <= -3 ? -1 : 0;
-                votes += latest > priorMax ? 1 : latest < priorMin ? -1 : 0;
-                votes += rsi >= 54 && rsi <= 72 ? 1 : rsi <= 46 && rsi >= 28 ? -1 : 0;
-
-                int confidence = Math.min(92, 48 + Math.abs(votes) * 8 + Math.min(8, candles.size() / 6));
-                String candidate = votes >= 4 ? "UP" : votes <= -4 ? "DOWN" : "WAIT";
-                if (("UP".equals(candidate) && rsi > 76) || ("DOWN".equals(candidate) && rsi < 24)) candidate = "WAIT";
+                SignalEngine.Decision decision = SignalEngine.analyze(candles);
 
                 int second = (int) ((System.currentTimeMillis() / 1000L) % 60L);
                 boolean timingWindow = second >= 50 || second <= 10;
-                if ("WAIT".equals(candidate)) {
-                    return AnalysisResult.waiting("No 4/6 confluence", candles.size(), rsi,
-                            "Trend/momentum filters disagree");
+                if ("WAIT".equals(decision.direction)) {
+                    return AnalysisResult.waiting("No 6-point confluence", candles.size(), decision.rsi,
+                            decision.detail + " • filters disagree");
                 }
                 if (!timingWindow) {
-                    return new AnalysisResult("WAIT", confidence, candles.size(), rsi,
-                            "Timing WAIT", candidate + " candidate • scan again at 00:50–00:10");
+                    return new AnalysisResult("WAIT", decision.strength, candles.size(), decision.rsi,
+                            "Timing WAIT", decision.direction + " candidate • scan at 00:50–00:10");
                 }
                 String status = second >= 50 ? "PREPARE NEXT CANDLE" : "ENTRY WINDOW";
-                return new AnalysisResult(candidate, confidence, candles.size(), rsi, status,
-                        "6-layer pixel confluence • fixed 2m demo expiry");
+                return new AnalysisResult(decision.direction, decision.strength, candles.size(),
+                        decision.rsi, status, decision.detail + " • next-candle demo only");
             } finally {
                 if (bitmap != source) bitmap.recycle();
             }
         }
 
-        private static List<Candle> extractCandles(Bitmap bitmap) {
+        private static List<SignalEngine.CandlePoint> extractCandles(Bitmap bitmap) {
             int width = bitmap.getWidth();
             int height = bitmap.getHeight();
-            int left = Math.round(width * 0.04f);
-            int right = Math.round(width * 0.88f);
-            int top = Math.round(height * 0.14f);
-            int bottom = Math.round(height * 0.86f);
+            // On the mobile Quotex layout the chart is in this band. The old
+            // 14%-86% crop also included the large red/green trade buttons,
+            // which created a persistent DOWN bias.
+            int left = Math.round(width * 0.01f);
+            int right = Math.round(width * 0.82f);
+            int top = Math.round(height * 0.20f);
+            int bottom = Math.round(height * 0.60f);
             int columns = Math.max(1, right - left);
             int[] green = new int[columns];
             int[] red = new int[columns];
-            int[] minY = new int[columns];
-            int[] maxY = new int[columns];
-            java.util.Arrays.fill(minY, Integer.MAX_VALUE);
+            int[] greenMinY = new int[columns];
+            int[] greenMaxY = new int[columns];
+            int[] redMinY = new int[columns];
+            int[] redMaxY = new int[columns];
+            java.util.Arrays.fill(greenMinY, Integer.MAX_VALUE);
+            java.util.Arrays.fill(redMinY, Integer.MAX_VALUE);
+            java.util.Arrays.fill(greenMaxY, -1);
+            java.util.Arrays.fill(redMaxY, -1);
 
             float[] hsv = new float[3];
             for (int x = left; x < right; x += 2) {
@@ -453,21 +402,27 @@ public final class MainActivity extends Activity {
                     float hue = hsv[0], saturation = hsv[1], value = hsv[2];
                     boolean isGreen = saturation > 0.30f && value > 0.24f && hue >= 75f && hue <= 190f;
                     boolean isRed = saturation > 0.34f && value > 0.28f && (hue <= 28f || hue >= 332f);
-                    if (isGreen || isRed) {
-                        if (isGreen) green[index]++; else red[index]++;
-                        minY[index] = Math.min(minY[index], y);
-                        maxY[index] = Math.max(maxY[index], y);
+                    if (isGreen) {
+                        green[index]++;
+                        greenMinY[index] = Math.min(greenMinY[index], y);
+                        greenMaxY[index] = Math.max(greenMaxY[index], y);
+                    } else if (isRed) {
+                        red[index]++;
+                        redMinY[index] = Math.min(redMinY[index], y);
+                        redMaxY[index] = Math.max(redMaxY[index], y);
                     }
                 }
                 if (index + 1 < columns) {
                     green[index + 1] = green[index];
                     red[index + 1] = red[index];
-                    minY[index + 1] = minY[index];
-                    maxY[index + 1] = maxY[index];
+                    greenMinY[index + 1] = greenMinY[index];
+                    greenMaxY[index + 1] = greenMaxY[index];
+                    redMinY[index + 1] = redMinY[index];
+                    redMaxY[index + 1] = redMaxY[index];
                 }
             }
 
-            List<Candle> found = new ArrayList<>();
+            List<SignalEngine.CandlePoint> found = new ArrayList<>();
             int start = -1;
             int side = 0;
             for (int i = 0; i <= columns; i++) {
@@ -477,73 +432,54 @@ public final class MainActivity extends Activity {
                     start = i;
                     side = nextSide;
                 } else if (start >= 0 && (nextSide == 0 || nextSide != side || i - start > 28)) {
-                    addCandle(found, start, i - 1, side, left, green, red, minY, maxY);
+                    addCandle(found, start, i - 1, side, left, green, red,
+                            greenMinY, greenMaxY, redMinY, redMaxY);
                     start = nextSide == 0 ? -1 : i;
                     side = nextSide;
                 }
             }
             Collections.sort(found, Comparator.comparingDouble(candle -> candle.x));
-            return found;
+            return rejectHeightOutliers(found);
         }
 
-        private static void addCandle(List<Candle> out, int start, int end, int side, int left,
-                                      int[] green, int[] red, int[] minY, int[] maxY) {
+        private static void addCandle(List<SignalEngine.CandlePoint> out, int start, int end,
+                                      int side, int left,
+                                      int[] green, int[] red,
+                                      int[] greenMinY, int[] greenMaxY,
+                                      int[] redMinY, int[] redMaxY) {
             if (end < start) return;
-            int best = start;
             int bestCount = -1;
             int top = Integer.MAX_VALUE;
             int bottom = -1;
             for (int i = start; i <= end; i++) {
                 int count = side > 0 ? green[i] : red[i];
-                if (count > bestCount) { bestCount = count; best = i; }
-                if (minY[i] != Integer.MAX_VALUE) top = Math.min(top, minY[i]);
-                bottom = Math.max(bottom, maxY[i]);
+                if (count > bestCount) bestCount = count;
+                int columnTop = side > 0 ? greenMinY[i] : redMinY[i];
+                int columnBottom = side > 0 ? greenMaxY[i] : redMaxY[i];
+                if (columnTop != Integer.MAX_VALUE) top = Math.min(top, columnTop);
+                bottom = Math.max(bottom, columnBottom);
             }
             int candleHeight = bottom - top;
             int candleWidth = end - start + 1;
-            if (bestCount < 2 || candleHeight < 6 || candleWidth > 30) return;
+            if (bestCount < 2 || candleHeight < 6 || candleWidth > 34) return;
             float centerY = (top + bottom) * 0.5f;
-            out.add(new Candle(left + (start + end) * 0.5f, -centerY, candleHeight, side > 0));
+            out.add(new SignalEngine.CandlePoint(
+                    left + (start + end) * 0.5f, -centerY, candleHeight, side > 0));
         }
 
-        private static float ema(float[] values, int period) {
-            float alpha = 2f / (period + 1f);
-            float value = values[0];
-            for (int i = 1; i < values.length; i++) value = values[i] * alpha + value * (1f - alpha);
-            return value;
-        }
-
-        private static float rsi(float[] values) {
-            int start = Math.max(1, values.length - 14);
-            float gains = 0f, losses = 0f;
-            int count = 0;
-            for (int i = start; i < values.length; i++) {
-                float delta = values[i] - values[i - 1];
-                if (delta > 0) gains += delta; else losses -= delta;
-                count++;
+        private static List<SignalEngine.CandlePoint> rejectHeightOutliers(
+                List<SignalEngine.CandlePoint> points) {
+            if (points.size() < 5) return points;
+            List<Float> heights = new ArrayList<>();
+            for (SignalEngine.CandlePoint point : points) heights.add(point.height);
+            Collections.sort(heights);
+            float median = heights.get(heights.size() / 2);
+            float maximum = Math.max(36f, median * 4.5f);
+            List<SignalEngine.CandlePoint> filtered = new ArrayList<>();
+            for (SignalEngine.CandlePoint point : points) {
+                if (point.height <= maximum) filtered.add(point);
             }
-            if (count == 0) return 50f;
-            gains /= count;
-            losses /= count;
-            if (losses < 0.0001f) return 100f;
-            float rs = gains / losses;
-            return 100f - 100f / (1f + rs);
-        }
-
-        private static float regressionSlope(float[] values, int count) {
-            int start = Math.max(0, values.length - count);
-            int n = values.length - start;
-            if (n < 2) return 0f;
-            float sumX = 0f, sumY = 0f, sumXY = 0f, sumXX = 0f;
-            for (int i = 0; i < n; i++) {
-                float y = values[start + i];
-                sumX += i;
-                sumY += y;
-                sumXY += i * y;
-                sumXX += i * i;
-            }
-            float denominator = n * sumXX - sumX * sumX;
-            return Math.abs(denominator) < 0.0001f ? 0f : (n * sumXY - sumX * sumY) / denominator;
+            return filtered;
         }
     }
 }
