@@ -2,14 +2,15 @@ package com.qx.strictsignal;
 
 import android.app.Activity;
 import android.graphics.Bitmap;
-import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Rect;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.Gravity;
+import android.view.PixelCopy;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.CookieManager;
@@ -318,14 +319,38 @@ public final class MainActivity extends Activity {
         final Bitmap frame;
         try {
             frame = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
-            Canvas canvas = new Canvas(frame);
-            webView.draw(canvas);
         } catch (Throwable error) {
             analysisBusy = false;
             showWait("Capture unavailable", "Reload chart and try again");
             return;
         }
 
+        // WebView.draw(Canvas) can return only the WebView background on some
+        // hardware-accelerated Android/WebView combinations even though the
+        // chart is visible on screen. PixelCopy reads the actually rendered
+        // window pixels and prevents the false "Detected 0 candles" result.
+        int[] location = new int[2];
+        webView.getLocationInWindow(location);
+        Rect source = new Rect(location[0], location[1],
+                location[0] + width, location[1] + height);
+        try {
+            PixelCopy.request(getWindow(), source, frame, copyResult -> {
+                if (copyResult == PixelCopy.SUCCESS) {
+                    analyzeFrame(frame);
+                } else {
+                    frame.recycle();
+                    analysisBusy = false;
+                    showWait("Capture retry", "Chart frame not ready • automatic retry");
+                }
+            }, mainHandler);
+        } catch (Throwable error) {
+            frame.recycle();
+            analysisBusy = false;
+            showWait("Capture unavailable", "Reload chart and try again");
+        }
+    }
+
+    private void analyzeFrame(Bitmap frame) {
         analyzerExecutor.execute(() -> {
             AnalysisResult result;
             try {

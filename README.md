@@ -75,6 +75,16 @@ create a bearish-only bias. Version 2:
 - Continues to show `WAIT` for choppy, low-volatility, shock, conflicting or
   overextended charts. It does not force a trade signal.
 
+## Version 2.7 rendered-chart capture fix
+
+- Replaces `WebView.draw(Canvas)` capture with Android `PixelCopy`, which reads
+  the hardware-rendered WebView pixels actually visible on the phone.
+- Fixes the confirmed case where many red/green candles were visible but the
+  app continuously reported `Detected 0 candles` because only the WebView
+  background reached the analyzer bitmap.
+- Keeps the v2.6 12-candle minimum, balanced 8/15 confluence, two-scan
+  confirmation and all symmetric safety filters unchanged.
+
 ## What it does
 
 - Shows the full official Quotex demo page inside the Android app, including

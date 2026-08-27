@@ -83,3 +83,14 @@ v2.6 ADAPTIVE LIVE SIGNAL FIX
 - Medium/long trend agreement, choppy, low-volatility, shock, trend-conflict ও
   overextended filter আগের মতো চালু আছে; unclear market-এ WAIT-ই দেখাবে।
 - Signal automatic, কিন্তু trade manual এবং demo-only; profit/win-rate নিশ্চিত নয়।
+
+v2.7 RENDERED CHART CAPTURE FIX
+===============================
+
+- Screenshot-এ candle দেখা গেলেও WebView.draw() কিছু Android/WebView device-এ
+  শুধু background bitmap দিচ্ছিল; তাই app ভুলভাবে Detected 0 candles দেখাত।
+- এখন Android PixelCopy দিয়ে screen-এ সত্যি render হওয়া WebView chart capture হয়।
+- Screenshot-এর একই chart crop/colour rules দিয়ে ২৮টি candle পাওয়া গেছে; অর্থাৎ
+  strategy নয়, frame capture-ই 0-candle সমস্যার মূল কারণ ছিল।
+- v2.6-এর ১২-candle minimum, balanced ৮/১৫ confluence, ২-scan confirmation,
+  symmetric UP/DOWN এবং safety WAIT filters অপরিবর্তিত আছে।
