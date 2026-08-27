@@ -16,6 +16,7 @@ import android.webkit.CookieManager;
 import android.webkit.SafeBrowsingResponse;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Button;
@@ -37,10 +38,13 @@ import java.util.concurrent.Executors;
  */
 public final class MainActivity extends Activity {
     private static final String[] START_URLS = {
-            "https://qxbroker.com/en/",
-            "https://quotex.com/en/"
+            "https://qxbroker.com/en/demo-trade",
+            "https://market-qx.trade/en/demo-trade",
+            "https://market-qx.pro/en/demo-trade",
+            "https://quotex.com/en/demo-trade"
     };
     private static final long SCAN_INTERVAL_MS = 2500L;
+    private static final long CHART_WARMUP_MS = 4000L;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService analyzerExecutor = Executors.newSingleThreadExecutor();
@@ -85,7 +89,7 @@ public final class MainActivity extends Activity {
         header.setPadding(dp(14), dp(10), dp(10), dp(9));
         header.setBackgroundColor(Color.rgb(10, 18, 32));
 
-        TextView title = text("QX Native Demo Signal v2.1", 16, Color.WHITE, true);
+        TextView title = text("QX Native Demo Signal v2.2", 16, Color.WHITE, true);
         header.addView(title, new LinearLayout.LayoutParams(0, dp(44), 1f));
         connectionView = text("CONNECTING", 10, Color.rgb(245, 179, 66), true);
         connectionView.setGravity(Gravity.CENTER);
@@ -131,7 +135,9 @@ public final class MainActivity extends Activity {
         reload.setOnClickListener(v -> {
             pageReady = false;
             connectionView.setText("RELOADING");
-            loadStartUrl(startUrlIndex, true);
+            String visibleUrl = webView.getUrl();
+            if (isOfficialUrl(visibleUrl)) webView.reload();
+            else loadStartUrl(0, true);
         });
         LinearLayout.LayoutParams reloadParams = new LinearLayout.LayoutParams(0, dp(46), 1f);
         reloadParams.setMarginStart(dp(8));
@@ -154,18 +160,22 @@ public final class MainActivity extends Activity {
         settings.setUseWideViewPort(true);
         settings.setBuiltInZoomControls(false);
         settings.setDisplayZoomControls(false);
+        settings.setJavaScriptCanOpenWindowsAutomatically(true);
+        settings.setSupportMultipleWindows(false);
+        settings.setCacheMode(android.webkit.WebSettings.LOAD_DEFAULT);
         settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(false);
         settings.setMediaPlaybackRequiresUserGesture(true);
         settings.setMixedContentMode(android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        settings.setUserAgentString(settings.getUserAgentString() + " QXNativeDemo/2.0");
+        // Keep Android's normal mobile WebView user-agent. Appending a custom
+        // bot-style token can make an otherwise valid Quotex session fail.
         WebView.setWebContentsDebuggingEnabled(false);
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
 
         webView.setWebViewClient(new WebViewClient() {
             @Override public void onPageStarted(WebView view, String url, Bitmap favicon) {
-                if (sameHost(url, currentLoadUrl)) {
+                if (isOfficialUrl(url)) {
                     pageReady = false;
                     connectionView.setText("LOADING");
                     connectionView.setTextColor(Color.rgb(245, 179, 66));
@@ -173,18 +183,15 @@ public final class MainActivity extends Activity {
             }
 
             @Override public void onPageFinished(WebView view, String url) {
-                if (!sameHost(url, currentLoadUrl) || sameHost(url, failedMainFrameUrl)) return;
-                pageReady = true;
-                failedMainFrameUrl = "";
-                connectionView.setText("LIVE PAGE");
-                connectionView.setTextColor(Color.rgb(80, 230, 169));
-                detailView.setText("Official chart loaded • Analysis stays on this device");
+                if (!isOfficialUrl(url) || sameHost(url, failedMainFrameUrl)) return;
+                connectionView.setText("OPENING DEMO");
+                connectionView.setTextColor(Color.rgb(245, 179, 66));
+                mainHandler.postDelayed(() -> markOfficialPageReady(view.getUrl()), CHART_WARMUP_MS);
             }
 
             @Override public void onReceivedError(WebView view, WebResourceRequest request,
                                                   WebResourceError error) {
-                if (!request.isForMainFrame()
-                        || !sameHost(request.getUrl().toString(), currentLoadUrl)) return;
+                if (!request.isForMainFrame() || !isOfficialUrl(request.getUrl().toString())) return;
                 pageReady = false;
                 failedMainFrameUrl = request.getUrl().toString();
                 if (error.getErrorCode() == WebViewClient.ERROR_HOST_LOOKUP
@@ -199,6 +206,24 @@ public final class MainActivity extends Activity {
                     connectionView.setTextColor(Color.rgb(239, 83, 80));
                     showWait("Website unavailable",
                             "Try mobile data or Private DNS: dns.google");
+                }
+            }
+
+            @Override public void onReceivedHttpError(WebView view, WebResourceRequest request,
+                                                       WebResourceResponse response) {
+                if (!request.isForMainFrame() || !isOfficialUrl(request.getUrl().toString())) return;
+                int status = response.getStatusCode();
+                if (status != 403 && status != 429 && status < 500) return;
+                pageReady = false;
+                failedMainFrameUrl = request.getUrl().toString();
+                if (startUrlIndex + 1 < START_URLS.length) {
+                    connectionView.setText("TRY BACKUP");
+                    showWait("Official page retry", "Server " + status + " • trying another official address");
+                    mainHandler.postDelayed(() -> loadStartUrl(startUrlIndex + 1, false), 700L);
+                } else {
+                    connectionView.setText("PAGE BLOCKED");
+                    connectionView.setTextColor(Color.rgb(239, 83, 80));
+                    showWait("Official page blocked", "Update Android System WebView or try mobile data");
                 }
             }
 
@@ -218,6 +243,15 @@ public final class MainActivity extends Activity {
         });
     }
 
+    private void markOfficialPageReady(String url) {
+        if (!isOfficialUrl(url) || sameHost(url, failedMainFrameUrl)) return;
+        pageReady = true;
+        failedMainFrameUrl = "";
+        connectionView.setText("LIVE DEMO");
+        connectionView.setTextColor(Color.rgb(80, 230, 169));
+        detailView.setText("Official demo page • choose any asset • on-device analysis");
+    }
+
     private void loadStartUrl(int index, boolean clearFailure) {
         startUrlIndex = Math.max(0, Math.min(index, START_URLS.length - 1));
         currentLoadUrl = START_URLS[startUrlIndex];
@@ -235,7 +269,22 @@ public final class MainActivity extends Activity {
     }
 
     private boolean isQuotexHost(String host) {
-        return host.contains("qxbroker") || host.contains("quotex") || host.contains("market-qx") || host.contains("qx-market");
+        return isHostOrSubdomain(host, "qxbroker.com")
+                || isHostOrSubdomain(host, "quotex.com")
+                || isHostOrSubdomain(host, "market-qx.trade")
+                || isHostOrSubdomain(host, "market-qx.pro");
+    }
+
+    private boolean isOfficialUrl(String url) {
+        if (url == null || url.isEmpty()) return false;
+        Uri uri = Uri.parse(url);
+        String host = uri.getHost();
+        return "https".equalsIgnoreCase(uri.getScheme())
+                && host != null && isQuotexHost(host.toLowerCase(Locale.US));
+    }
+
+    private boolean isHostOrSubdomain(String host, String domain) {
+        return host.equals(domain) || host.endsWith("." + domain);
     }
 
     private void captureAndAnalyze() {
