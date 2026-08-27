@@ -43,3 +43,14 @@ v2.2 LIVE DEMO PAGE FIX
 
 সীমা: Quotex-এর private AI/API app-এর মধ্যে কপি করা হয়নি। Signal হলো on-device
 multi-filter candle analysis; profit বা 8/10 win guarantee নয়। Demo-তে test করুন।
+
+v2.3 HIGH-CONFIRMATION ENGINE
+=============================
+
+- কমপক্ষে ১৬টি candle এবং ১৫ point-এর মধ্যে ৯ point confluence লাগে।
+- Short/medium/long trend, EMA, MACD impulse, RSI, momentum, candle balance,
+  breakout, trend efficiency এবং range position একসঙ্গে পরীক্ষা করে।
+- Choppy, low-volatility, sudden shock, conflicting trend ও overextended market
+  হলে UP/DOWN না দিয়ে WAIT দেখায়।
+- একই direction পরপর ৩টি scan-এ নিশ্চিত হলে signal দেখায়।
+- UP ও DOWN scoring পুরো mirror; কোনো দিককে অগ্রাধিকার দেওয়া হয়নি।

@@ -89,7 +89,7 @@ public final class MainActivity extends Activity {
         header.setPadding(dp(14), dp(10), dp(10), dp(9));
         header.setBackgroundColor(Color.rgb(10, 18, 32));
 
-        TextView title = text("QX Native Demo Signal v2.2", 16, Color.WHITE, true);
+        TextView title = text("QX Native Demo Signal v2.3", 16, Color.WHITE, true);
         header.addView(title, new LinearLayout.LayoutParams(0, dp(44), 1f));
         connectionView = text("CONNECTING", 10, Color.rgb(245, 179, 66), true);
         connectionView.setGravity(Gravity.CENTER);
@@ -107,7 +107,7 @@ public final class MainActivity extends Activity {
         signalView.setGravity(Gravity.CENTER);
         strengthView = text("Live chart loading…", 11, Color.rgb(171, 183, 201), false);
         strengthView.setGravity(Gravity.CENTER);
-        detailView = text("Chart-only pixel analysis v2 • DEMO ONLY", 9, Color.rgb(114, 130, 153), false);
+        detailView = text("15-point adaptive confluence • DEMO ONLY", 9, Color.rgb(114, 130, 153), false);
         detailView.setGravity(Gravity.CENTER);
         signalPanel.addView(signalView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38)));
         signalPanel.addView(strengthView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(22)));
@@ -331,9 +331,9 @@ public final class MainActivity extends Activity {
             lastCandidate = result.direction;
             candidateStreak = 1;
         }
-        if (candidateStreak < 2) {
+        if (candidateStreak < 3) {
             return AnalysisResult.waiting("Confirming " + result.direction, result.candles,
-                    result.rsi, result.detail + " • need 2 stable scans");
+                    result.rsi, result.detail + " • need 3 stable scans");
         }
         return result;
     }
@@ -440,7 +440,7 @@ public final class MainActivity extends Activity {
                 List<SignalEngine.CandlePoint> candles = extractCandles(bitmap);
                 if (candles.size() < SignalEngine.MIN_CANDLES) {
                     return AnalysisResult.waiting("Chart not ready", candles.size(), 0,
-                            "Keep at least 12 red/green candles visible");
+                            "Keep at least 16 red/green candles visible");
                 }
 
                 int greenCount = 0;
@@ -459,7 +459,7 @@ public final class MainActivity extends Activity {
                 int second = (int) ((System.currentTimeMillis() / 1000L) % 60L);
                 boolean timingWindow = second >= 50 || second <= 10;
                 if ("WAIT".equals(decision.direction)) {
-                    return AnalysisResult.waiting("No 6-point confluence", candles.size(), decision.rsi,
+                    return AnalysisResult.waiting("No 9-point confluence", candles.size(), decision.rsi,
                             decision.detail + " • filters disagree");
                 }
                 if (!timingWindow) {

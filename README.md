@@ -34,6 +34,17 @@ create a bearish-only bias. Version 2:
   seconds to initialize before scanning.
 - Reloads the current selected asset page without discarding its session.
 
+## Version 2.3 adaptive high-confirmation engine
+
+- Requires at least 16 detected candles and 9/15 directional confluence.
+- Combines short/medium/long trend, EMA alignment, MACD impulse, RSI,
+  momentum, candle balance, breakout, trend efficiency and range position.
+- Rejects choppy, very low-volatility, one-candle shock, conflicting-trend and
+  overextended setups.
+- Requires three consecutive matching scans before displaying UP or DOWN.
+- Keeps bullish and bearish rules exact mirrors and verifies both directions,
+  flat-market WAIT and volatility-shock WAIT in the deterministic build test.
+
 ## What it does
 
 - Shows the full official Quotex demo page inside the Android app, including
