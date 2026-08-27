@@ -10,6 +10,8 @@ QX NATIVE DEMO SIGNAL v2 — বাংলা নির্দেশনা
 ৪. একই signal পরপর ২টি scan-এ না এলে UP/DOWN দেখায় না।
 ৫. “confidence” নয়, “setup strength” দেখায়—এটি win probability নয়।
 ৬. rising, falling এবং flat market-এর deterministic self-test যোগ করা হয়েছে।
+৭. qxbroker.com DNS error হলে official quotex.com address স্বয়ংক্রিয়ভাবে চেষ্টা করে।
+৮. error page-কে আর ভুলভাবে LIVE PAGE দেখায় না।
 
 APK বানানোর সহজ নিয়ম
 ---------------------
@@ -28,4 +30,3 @@ APK বানানোর সহজ নিয়ম
 - signal না মিললে WAIT দেখানো স্বাভাবিক এবং নিরাপদ আচরণ।
 - অন্তত ১০০টি demo signal লিখে result যাচাই না করে real-money সিদ্ধান্ত নেবেন না।
 - ১০টির মধ্যে ৮টি profit বা কোনো profit নিশ্চিত নয়।
-

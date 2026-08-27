@@ -16,6 +16,13 @@ create a bearish-only bias. Version 2:
 - includes a deterministic mirror test proving that rising and falling inputs
   can produce UP and DOWN with equal strength.
 
+## Version 2.1 connection fix
+
+- Does not mark a WebView error page as `LIVE PAGE`.
+- Automatically tries the official `quotex.com` address when `qxbroker.com`
+  fails with a DNS host-lookup error.
+- Shows a clear DNS error message when neither official address can load.
+
 ## What it does
 
 - Shows the official Quotex page inside the Android app.

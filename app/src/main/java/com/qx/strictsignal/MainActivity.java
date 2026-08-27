@@ -14,6 +14,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.CookieManager;
 import android.webkit.SafeBrowsingResponse;
+import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -35,7 +36,10 @@ import java.util.concurrent.Executors;
  * injects trade actions, or sends captured frames to a server.
  */
 public final class MainActivity extends Activity {
-    private static final String START_URL = "https://qxbroker.com/en/";
+    private static final String[] START_URLS = {
+            "https://qxbroker.com/en/",
+            "https://quotex.com/en/"
+    };
     private static final long SCAN_INTERVAL_MS = 2500L;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -51,6 +55,9 @@ public final class MainActivity extends Activity {
     private volatile boolean analysisBusy;
     private String lastCandidate = "WAIT";
     private int candidateStreak;
+    private int startUrlIndex;
+    private String currentLoadUrl = START_URLS[0];
+    private String failedMainFrameUrl = "";
 
     private final Runnable scanLoop = new Runnable() {
         @Override public void run() {
@@ -64,7 +71,7 @@ public final class MainActivity extends Activity {
         getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setContentView(buildUi());
         configureWebView();
-        webView.loadUrl(START_URL);
+        loadStartUrl(0, true);
         mainHandler.postDelayed(scanLoop, 3500L);
     }
 
@@ -78,7 +85,7 @@ public final class MainActivity extends Activity {
         header.setPadding(dp(14), dp(10), dp(10), dp(9));
         header.setBackgroundColor(Color.rgb(10, 18, 32));
 
-        TextView title = text("QX Native Demo Signal v2", 16, Color.WHITE, true);
+        TextView title = text("QX Native Demo Signal v2.1", 16, Color.WHITE, true);
         header.addView(title, new LinearLayout.LayoutParams(0, dp(44), 1f));
         connectionView = text("CONNECTING", 10, Color.rgb(245, 179, 66), true);
         connectionView.setGravity(Gravity.CENTER);
@@ -124,7 +131,7 @@ public final class MainActivity extends Activity {
         reload.setOnClickListener(v -> {
             pageReady = false;
             connectionView.setText("RELOADING");
-            webView.reload();
+            loadStartUrl(startUrlIndex, true);
         });
         LinearLayout.LayoutParams reloadParams = new LinearLayout.LayoutParams(0, dp(46), 1f);
         reloadParams.setMarginStart(dp(8));
@@ -157,11 +164,42 @@ public final class MainActivity extends Activity {
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
 
         webView.setWebViewClient(new WebViewClient() {
+            @Override public void onPageStarted(WebView view, String url, Bitmap favicon) {
+                if (sameHost(url, currentLoadUrl)) {
+                    pageReady = false;
+                    connectionView.setText("LOADING");
+                    connectionView.setTextColor(Color.rgb(245, 179, 66));
+                }
+            }
+
             @Override public void onPageFinished(WebView view, String url) {
+                if (!sameHost(url, currentLoadUrl) || sameHost(url, failedMainFrameUrl)) return;
                 pageReady = true;
+                failedMainFrameUrl = "";
                 connectionView.setText("LIVE PAGE");
                 connectionView.setTextColor(Color.rgb(80, 230, 169));
-                detailView.setText("Chart rendered inside app • Analysis stays on this device");
+                detailView.setText("Official chart loaded • Analysis stays on this device");
+            }
+
+            @Override public void onReceivedError(WebView view, WebResourceRequest request,
+                                                  WebResourceError error) {
+                if (!request.isForMainFrame()
+                        || !sameHost(request.getUrl().toString(), currentLoadUrl)) return;
+                pageReady = false;
+                failedMainFrameUrl = request.getUrl().toString();
+                if (error.getErrorCode() == WebViewClient.ERROR_HOST_LOOKUP
+                        && startUrlIndex + 1 < START_URLS.length) {
+                    connectionView.setText("TRY BACKUP");
+                    connectionView.setTextColor(Color.rgb(245, 179, 66));
+                    showWait("DNS fallback", "Primary address failed • trying official backup");
+                    mainHandler.postDelayed(
+                            () -> loadStartUrl(startUrlIndex + 1, false), 500L);
+                } else {
+                    connectionView.setText("DNS ERROR");
+                    connectionView.setTextColor(Color.rgb(239, 83, 80));
+                    showWait("Website unavailable",
+                            "Try mobile data or Private DNS: dns.google");
+                }
             }
 
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
@@ -178,6 +216,22 @@ public final class MainActivity extends Activity {
                 showWait("Security block", "Unsafe redirect was blocked");
             }
         });
+    }
+
+    private void loadStartUrl(int index, boolean clearFailure) {
+        startUrlIndex = Math.max(0, Math.min(index, START_URLS.length - 1));
+        currentLoadUrl = START_URLS[startUrlIndex];
+        if (clearFailure) failedMainFrameUrl = "";
+        pageReady = false;
+        webView.loadUrl(currentLoadUrl);
+    }
+
+    private boolean sameHost(String firstUrl, String secondUrl) {
+        if (firstUrl == null || secondUrl == null || secondUrl.isEmpty()) return false;
+        String firstHost = Uri.parse(firstUrl).getHost();
+        String secondHost = Uri.parse(secondUrl).getHost();
+        return firstHost != null && secondHost != null
+                && firstHost.equalsIgnoreCase(secondHost);
     }
 
     private boolean isQuotexHost(String host) {
