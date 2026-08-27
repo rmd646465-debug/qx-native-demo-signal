@@ -38,6 +38,8 @@ import java.util.concurrent.Executors;
  */
 public final class MainActivity extends Activity {
     private static final String[] START_URLS = {
+            "https://market-qx.info/en/",
+            "https://market-quotex.pro/en/",
             "https://qxbroker.com/en/demo-trade",
             "https://market-qx.trade/en/demo-trade",
             "https://market-qx.pro/en/demo-trade",
@@ -281,6 +283,8 @@ public final class MainActivity extends Activity {
     private boolean isQuotexHost(String host) {
         return isHostOrSubdomain(host, "qxbroker.com")
                 || isHostOrSubdomain(host, "quotex.com")
+                || isHostOrSubdomain(host, "market-qx.info")
+                || isHostOrSubdomain(host, "market-quotex.pro")
                 || isHostOrSubdomain(host, "market-qx.trade")
                 || isHostOrSubdomain(host, "market-qx.pro");
     }

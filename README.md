@@ -56,6 +56,13 @@ create a bearish-only bias. Version 2:
 - The embedded middle section remains the complete official page; it is not a
   fake balance, copied chart, or simulated Quotex interface.
 
+## Version 2.5 current live-domain fix
+
+- Opens the user's currently working `market-qx.info/en/` live page first.
+- Keeps `market-qx.info` inside the app instead of sending it to Chrome.
+- Accepts the current `market-quotex.pro` redirect as part of the embedded live
+  page flow, while retaining the previous official fallback addresses.
+
 ## What it does
 
 - Shows the full official Quotex demo page inside the Android app, including

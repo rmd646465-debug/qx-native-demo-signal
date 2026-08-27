@@ -64,3 +64,11 @@ v2.4 REFERENCE UI + SAVED DEMO SESSION
 - User official page-এ একবার login করে DEMO বেছে নিলে cookie/session save থাকে;
   পরে app খুললে live demo dashboard ফেরত আসতে পারে।
 - App password পড়ে না, login bypass করে না এবং নকল balance/chart দেখায় না।
+
+v2.5 CURRENT LIVE DOMAIN FIX
+============================
+
+- Screenshot-এ কাজ করা market-qx.info/en/ page এখন app প্রথমে খুলবে।
+- market-qx.info আর Chrome-এ বাইরে যাবে না; app-এর signal panel-এর নিচেই থাকবে।
+- market-quotex.pro redirect-ও app-এর ভেতরে গ্রহণ করা হবে।
+- Setup না থাকলে ভুল UP/DOWN নয়—WAIT দেখানো হবে।
