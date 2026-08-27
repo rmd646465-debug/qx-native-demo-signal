@@ -63,12 +63,25 @@ create a bearish-only bias. Version 2:
 - Accepts the current `market-quotex.pro` redirect as part of the embedded live
   page flow, while retaining the previous official fallback addresses.
 
+## Version 2.6 adaptive live-signal fix
+
+- Removes the incorrect phone-clock timing gate. The embedded chart countdown
+  cannot be inferred from the phone's wall-clock seconds, and that gate could
+  hold a valid chart setup at `WAIT`.
+- Starts analysis with 12 detected candles, requires balanced 8/15 directional
+  confluence, and still keeps medium/long-trend agreement plus all safety filters.
+- Requires two matching scans before showing UP or DOWN, so a stable valid setup
+  appears automatically in about five seconds instead of waiting for three scans.
+- Continues to show `WAIT` for choppy, low-volatility, shock, conflicting or
+  overextended charts. It does not force a trade signal.
+
 ## What it does
 
 - Shows the full official Quotex demo page inside the Android app, including
   its own asset/currency selector when the platform makes it available.
 - Reads visible candle pixels every 2.5 seconds.
-- Uses symmetric trend slope, EMA proxy, RSI proxy, candle momentum, breakout and timing filters.
+- Uses symmetric trend slope, EMA proxy, MACD impulse, RSI proxy, candle momentum,
+  breakout, trend-efficiency, range-position and market-safety filters.
 - Shows **UP**, **DOWN**, or **WAIT** only when strict confluence is present.
 - Keeps captured frames on the device and does not collect credentials.
 - Never places a trade or clicks Quotex controls.

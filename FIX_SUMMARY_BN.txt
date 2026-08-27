@@ -72,3 +72,14 @@ v2.5 CURRENT LIVE DOMAIN FIX
 - market-qx.info আর Chrome-এ বাইরে যাবে না; app-এর signal panel-এর নিচেই থাকবে।
 - market-quotex.pro redirect-ও app-এর ভেতরে গ্রহণ করা হবে।
 - Setup না থাকলে ভুল UP/DOWN নয়—WAIT দেখানো হবে।
+
+v2.6 ADAPTIVE LIVE SIGNAL FIX
+=============================
+
+- আগের version chart-এর countdown না পড়ে ফোনের system-clock second দিয়ে timing
+  block করত। এই ভুল gate-এর কারণে valid setup-ও WAIT-এ আটকে থাকতে পারত; এটি সরানো হয়েছে।
+- এখন ১২টি detected candle থেকে analysis শুরু হয় এবং balanced ৮/১৫ confluence লাগে।
+- একই direction ২টি consecutive scan-এ stable হলে প্রায় ৫ সেকেন্ডে UP/DOWN দেখায়।
+- Medium/long trend agreement, choppy, low-volatility, shock, trend-conflict ও
+  overextended filter আগের মতো চালু আছে; unclear market-এ WAIT-ই দেখাবে।
+- Signal automatic, কিন্তু trade manual এবং demo-only; profit/win-rate নিশ্চিত নয়।
