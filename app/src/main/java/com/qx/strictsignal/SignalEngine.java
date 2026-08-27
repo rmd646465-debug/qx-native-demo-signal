@@ -123,7 +123,7 @@ final class SignalEngine {
         int strength = "WAIT".equals(direction)
                 ? 0
                 : Math.min(92, 45 + winningSide * 5 + Math.min(7, candles.size() / 6));
-        String detail = "UP " + bullish + "/12 • DOWN " + bearish + "/12"
+        String detail = "UP " + bullish + "/10 • DOWN " + bearish + "/10"
                 + (overextended ? " • overextended" : "");
         return new Decision(direction, strength, rsi, bullish, bearish, detail);
     }
