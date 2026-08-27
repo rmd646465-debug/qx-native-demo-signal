@@ -10,8 +10,8 @@ android {
         applicationId "com.qx.strictsignal"
         minSdk 26
         targetSdk 35
-        versionCode 6
-        versionName "2.3.0-adaptive-confluence"
+        versionCode 7
+        versionName "2.4.0-reference-ui-persistent-demo"
     }
 
     buildTypes {

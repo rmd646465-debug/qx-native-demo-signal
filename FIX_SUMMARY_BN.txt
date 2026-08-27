@@ -54,3 +54,13 @@ v2.3 HIGH-CONFIRMATION ENGINE
   হলে UP/DOWN না দিয়ে WAIT দেখায়।
 - একই direction পরপর ৩টি scan-এ নিশ্চিত হলে signal দেখায়।
 - UP ও DOWN scoring পুরো mirror; কোনো দিককে অগ্রাধিকার দেওয়া হয়নি।
+
+v2.4 REFERENCE UI + SAVED DEMO SESSION
+======================================
+
+- Reference ছবির মতো title থেকে version number সরানো হয়েছে এবং LIVE PAGE রাখা হয়েছে।
+- Official page Sign In-এ পাঠালে LOGIN ONCE দেখায়; login page-এর colour আর candle
+  হিসেবে analyze হয় না।
+- User official page-এ একবার login করে DEMO বেছে নিলে cookie/session save থাকে;
+  পরে app খুললে live demo dashboard ফেরত আসতে পারে।
+- App password পড়ে না, login bypass করে না এবং নকল balance/chart দেখায় না।

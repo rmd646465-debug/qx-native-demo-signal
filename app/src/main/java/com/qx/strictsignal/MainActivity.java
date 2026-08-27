@@ -89,7 +89,7 @@ public final class MainActivity extends Activity {
         header.setPadding(dp(14), dp(10), dp(10), dp(9));
         header.setBackgroundColor(Color.rgb(10, 18, 32));
 
-        TextView title = text("QX Native Demo Signal v2.3", 16, Color.WHITE, true);
+        TextView title = text("QX Native Demo Signal", 16, Color.WHITE, true);
         header.addView(title, new LinearLayout.LayoutParams(0, dp(44), 1f));
         connectionView = text("CONNECTING", 10, Color.rgb(245, 179, 66), true);
         connectionView.setGravity(Gravity.CENTER);
@@ -107,7 +107,7 @@ public final class MainActivity extends Activity {
         signalView.setGravity(Gravity.CENTER);
         strengthView = text("Live chart loading…", 11, Color.rgb(171, 183, 201), false);
         strengthView.setGravity(Gravity.CENTER);
-        detailView = text("15-point adaptive confluence • DEMO ONLY", 9, Color.rgb(114, 130, 153), false);
+        detailView = text("15-layer high confirmation • 1m demo timing", 9, Color.rgb(114, 130, 153), false);
         detailView.setGravity(Gravity.CENTER);
         signalPanel.addView(signalView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38)));
         signalPanel.addView(strengthView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(22)));
@@ -184,6 +184,15 @@ public final class MainActivity extends Activity {
 
             @Override public void onPageFinished(WebView view, String url) {
                 if (!isOfficialUrl(url) || sameHost(url, failedMainFrameUrl)) return;
+                CookieManager.getInstance().flush();
+                if (isAuthenticationUrl(url)) {
+                    pageReady = false;
+                    connectionView.setText("LOGIN ONCE");
+                    connectionView.setTextColor(Color.rgb(245, 179, 66));
+                    showWait("Official login required",
+                            "Sign in here, switch to DEMO, then the session stays saved");
+                    return;
+                }
                 connectionView.setText("OPENING DEMO");
                 connectionView.setTextColor(Color.rgb(245, 179, 66));
                 mainHandler.postDelayed(() -> markOfficialPageReady(view.getUrl()), CHART_WARMUP_MS);
@@ -244,12 +253,13 @@ public final class MainActivity extends Activity {
     }
 
     private void markOfficialPageReady(String url) {
-        if (!isOfficialUrl(url) || sameHost(url, failedMainFrameUrl)) return;
+        if (!isOfficialUrl(url) || isAuthenticationUrl(url)
+                || sameHost(url, failedMainFrameUrl)) return;
         pageReady = true;
         failedMainFrameUrl = "";
-        connectionView.setText("LIVE DEMO");
+        connectionView.setText("LIVE PAGE");
         connectionView.setTextColor(Color.rgb(80, 230, 169));
-        detailView.setText("Official demo page • choose any asset • on-device analysis");
+        detailView.setText("Official demo page • 15-layer on-device analysis");
     }
 
     private void loadStartUrl(int index, boolean clearFailure) {
@@ -281,6 +291,15 @@ public final class MainActivity extends Activity {
         String host = uri.getHost();
         return "https".equalsIgnoreCase(uri.getScheme())
                 && host != null && isQuotexHost(host.toLowerCase(Locale.US));
+    }
+
+    private boolean isAuthenticationUrl(String url) {
+        if (url == null) return false;
+        String path = Uri.parse(url).getPath();
+        if (path == null) return false;
+        String lower = path.toLowerCase(Locale.US);
+        return lower.contains("sign-in") || lower.contains("sign-up")
+                || lower.contains("login") || lower.contains("registration");
     }
 
     private boolean isHostOrSubdomain(String host, String domain) {
@@ -403,8 +422,14 @@ public final class MainActivity extends Activity {
     @Override protected void onDestroy() {
         mainHandler.removeCallbacks(scanLoop);
         analyzerExecutor.shutdownNow();
+        CookieManager.getInstance().flush();
         if (webView != null) webView.destroy();
         super.onDestroy();
+    }
+
+    @Override protected void onPause() {
+        CookieManager.getInstance().flush();
+        super.onPause();
     }
 
     private static final class AnalysisResult {

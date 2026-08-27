@@ -45,6 +45,17 @@ create a bearish-only bias. Version 2:
 - Keeps bullish and bearish rules exact mirrors and verifies both directions,
   flat-market WAIT and volatility-shock WAIT in the deterministic build test.
 
+## Version 2.4 reference UI and persistent official session
+
+- Restores the reference title and `LIVE PAGE` status presentation.
+- Detects official Sign In/Registration pages and pauses chart analysis instead
+  of treating authentication pixels as candles.
+- Saves the official Quotex WebView cookie/session after the user signs in on
+  the official page and switches to DEMO, so later launches can return to the
+  live demo dashboard without the app reading or storing the password itself.
+- The embedded middle section remains the complete official page; it is not a
+  fake balance, copied chart, or simulated Quotex interface.
+
 ## What it does
 
 - Shows the full official Quotex demo page inside the Android app, including
