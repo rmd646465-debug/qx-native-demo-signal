@@ -23,9 +23,21 @@ create a bearish-only bias. Version 2:
   fails with a DNS host-lookup error.
 - Shows a clear DNS error message when neither official address can load.
 
+## Version 2.2 live-demo fix
+
+- Opens the official no-registration demo-trade route instead of the marketing home page.
+- Tries the official `qxbroker.com`, `market-qx.trade`, `market-qx.pro`, and
+  `quotex.com` demo routes in sequence when DNS, 403, 429, or server errors occur.
+- Accepts official cross-domain redirects, so a successful redirect can become
+  `LIVE DEMO` and start chart analysis.
+- Keeps the normal Android WebView identity and gives the live chart four
+  seconds to initialize before scanning.
+- Reloads the current selected asset page without discarding its session.
+
 ## What it does
 
-- Shows the official Quotex page inside the Android app.
+- Shows the full official Quotex demo page inside the Android app, including
+  its own asset/currency selector when the platform makes it available.
 - Reads visible candle pixels every 2.5 seconds.
 - Uses symmetric trend slope, EMA proxy, RSI proxy, candle momentum, breakout and timing filters.
 - Shows **UP**, **DOWN**, or **WAIT** only when strict confluence is present.
