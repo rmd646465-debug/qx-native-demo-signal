@@ -154,11 +154,11 @@ final class SignalEngine {
         String direction = "WAIT";
         if (bullish >= 10 && net >= 5 && shortSlope > 0.04f
                 && mediumSlope > 0.035f && longSlope > 0.02f
-                && recentColorBalance >= 1 && trendEfficiency >= 0.32f) {
+                && recentColorBalance >= 1 && trendEfficiency >= 0.31f) {
             direction = "UP";
         } else if (bearish >= 10 && net <= -5 && shortSlope < -0.04f
                 && mediumSlope < -0.035f && longSlope < -0.02f
-                && recentColorBalance <= -1 && trendEfficiency >= 0.32f) {
+                && recentColorBalance <= -1 && trendEfficiency >= 0.31f) {
             direction = "DOWN";
         }
 
