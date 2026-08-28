@@ -124,7 +124,7 @@ public final class MainActivity extends Activity {
         signalView.setGravity(Gravity.CENTER);
         strengthView = text("Live chart loading…", 11, Color.rgb(171, 183, 201), false);
         strengthView.setGravity(Gravity.CENTER);
-        detailView = text("15-layer adaptive confirmation • DEMO ONLY", 9, Color.rgb(114, 130, 153), false);
+        detailView = text("PRECISION MODE • CLOSED CANDLES • DEMO ONLY", 9, Color.rgb(114, 130, 153), false);
         detailView.setGravity(Gravity.CENTER);
         signalPanel.addView(signalView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38)));
         signalPanel.addView(strengthView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(22)));
@@ -288,7 +288,7 @@ public final class MainActivity extends Activity {
         failedMainFrameUrl = "";
         connectionView.setText("LIVE PAGE");
         connectionView.setTextColor(Color.rgb(80, 230, 169));
-        detailView.setText("Official demo page • 15-layer on-device analysis");
+        detailView.setText("Official demo page • precision closed-candle analysis");
         refreshCurrentAssetName(null);
     }
 
@@ -367,8 +367,10 @@ public final class MainActivity extends Activity {
                 + "if(r.width<18||r.height<8||r.bottom<0||r.top>innerHeight||s.display==='none'||s.visibility==='hidden')continue;"
                 + "const t=(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim().toUpperCase();"
                 + "if(t.length>100)continue;const m=t.match(re);if(!m)continue;const pair=m[1]+'/'+m[2];"
-                + "const name=pair+(t.includes('OTC')?' (OTC)':'');if(!map.has(pair)||name.includes('OTC'))map.set(pair,name);}"
-                + "return Array.from(map.values()).slice(0,12);})()";
+                + "const pm=t.match(/(\\d{2,3})\\s*%/),p=pm?parseInt(pm[1],10):0;"
+                + "const name=pair+(t.includes('OTC')?' (OTC)':'');const old=map.get(pair);"
+                + "if(!old||p>old.payout||(name.includes('OTC')&&!old.name.includes('OTC')))map.set(pair,{name:name,payout:p});}"
+                + "return Array.from(map.values()).filter(x=>x.payout===0||x.payout>=90).map(x=>x.name).slice(0,12);})()";
     }
 
     private String selectAssetScript(String asset) {
@@ -449,7 +451,7 @@ public final class MainActivity extends Activity {
         }
         String asset = assetQueue.get(assetScanIndex);
         showWait("Scanning " + (assetScanIndex + 1) + "/" + assetQueue.size(),
-                asset + " • two rendered-chart confirmations");
+                asset + " • three closed-chart confirmations");
         Consumer<Boolean> selected = ok -> {
             if (!assetScanActive) return;
             if (!ok) {
@@ -480,16 +482,23 @@ public final class MainActivity extends Activity {
             if (!assetScanActive) return;
             mainHandler.postDelayed(() -> captureAndAnalyze(second -> {
                 if (!assetScanActive) return;
-                AnalysisResult stable = second;
-                if (!first.direction.equals(second.direction)
-                        || ("WAIT".equals(first.direction) && !first.status.equals(second.status))) {
-                    stable = AnalysisResult.waiting("Unstable setup",
-                            Math.max(first.candles, second.candles), second.rsi,
-                            "Two scans did not agree • skipped");
-                }
-                assetScanResults.add(new AssetScanResult(asset, stable));
-                assetScanIndex++;
-                scanNextAsset();
+                mainHandler.postDelayed(() -> captureAndAnalyze(third -> {
+                    if (!assetScanActive) return;
+                    AnalysisResult stable = third;
+                    boolean sameDirection = first.direction.equals(second.direction)
+                            && second.direction.equals(third.direction);
+                    boolean sameWaitReason = !"WAIT".equals(first.direction)
+                            || (first.status.equals(second.status)
+                            && second.status.equals(third.status));
+                    if (!sameDirection || !sameWaitReason) {
+                        stable = AnalysisResult.waiting("Unstable setup",
+                                Math.max(first.candles, Math.max(second.candles, third.candles)),
+                                third.rsi, "Three scans did not agree • skipped");
+                    }
+                    assetScanResults.add(new AssetScanResult(asset, stable));
+                    assetScanIndex++;
+                    scanNextAsset();
+                }), SCAN_INTERVAL_MS);
             }), SCAN_INTERVAL_MS);
         });
     }
@@ -601,9 +610,9 @@ public final class MainActivity extends Activity {
             lastCandidate = result.direction;
             candidateStreak = 1;
         }
-        if (candidateStreak < 2) {
+        if (candidateStreak < 3) {
             return AnalysisResult.waiting("Confirming " + result.direction, result.candles,
-                    result.rsi, result.detail + " • need 2 stable scans");
+                    result.rsi, result.detail + " • need 3 stable scans");
         }
         return result;
     }
@@ -637,10 +646,7 @@ public final class MainActivity extends Activity {
     }
 
     private int suggestedExpiryMinutes(AnalysisResult result) {
-        if (result.strength >= 90) return 5;
-        if (result.strength >= 86) return 3;
-        if (result.strength >= 82) return 2;
-        return 1;
+        return result.strength >= 90 ? 2 : 1;
     }
 
     private void showWait(String status, String detail) {
@@ -737,11 +743,16 @@ public final class MainActivity extends Activity {
                     ? source
                     : Bitmap.createScaledBitmap(source, targetWidth, targetHeight, true);
             try {
-                List<SignalEngine.CandlePoint> candles = extractCandles(bitmap);
-                if (candles.size() < SignalEngine.MIN_CANDLES) {
-                    return AnalysisResult.waiting("Chart not ready", candles.size(), 0,
-                            "Keep at least 12 red/green candles visible");
+                List<SignalEngine.CandlePoint> detected = extractCandles(bitmap);
+                if (detected.size() < SignalEngine.MIN_CANDLES + 1) {
+                    return AnalysisResult.waiting("Chart not ready", detected.size(), 0,
+                            "Keep at least 25 red/green candles visible");
                 }
+
+                // The rightmost candle is normally still forming. Excluding it
+                // prevents repainting from changing a signal after entry.
+                List<SignalEngine.CandlePoint> candles = new ArrayList<>(
+                        detected.subList(0, detected.size() - 1));
 
                 int greenCount = 0;
                 int redCount = 0;
@@ -757,7 +768,7 @@ public final class MainActivity extends Activity {
                 SignalEngine.Decision decision = SignalEngine.analyze(candles);
 
                 if ("WAIT".equals(decision.direction)) {
-                    return AnalysisResult.waiting("No 8-point confluence", candles.size(), decision.rsi,
+                    return AnalysisResult.waiting("No 10-point confluence", candles.size(), decision.rsi,
                             decision.detail + " • filters disagree");
                 }
                 return new AnalysisResult(decision.direction, decision.strength, candles.size(),
@@ -848,20 +859,31 @@ public final class MainActivity extends Activity {
             int bestCount = -1;
             int top = Integer.MAX_VALUE;
             int bottom = -1;
+            List<Integer> bodyTops = new ArrayList<>();
+            List<Integer> bodyBottoms = new ArrayList<>();
             for (int i = start; i <= end; i++) {
                 int count = side > 0 ? green[i] : red[i];
                 if (count > bestCount) bestCount = count;
                 int columnTop = side > 0 ? greenMinY[i] : redMinY[i];
                 int columnBottom = side > 0 ? greenMaxY[i] : redMaxY[i];
-                if (columnTop != Integer.MAX_VALUE) top = Math.min(top, columnTop);
+                if (columnTop != Integer.MAX_VALUE) {
+                    top = Math.min(top, columnTop);
+                    bodyTops.add(columnTop);
+                }
+                if (columnBottom >= 0) bodyBottoms.add(columnBottom);
                 bottom = Math.max(bottom, columnBottom);
             }
             int candleHeight = bottom - top;
             int candleWidth = end - start + 1;
-            if (bestCount < 2 || candleHeight < 6 || candleWidth > 34) return;
-            float centerY = (top + bottom) * 0.5f;
+            if (bestCount < 2 || candleHeight < 6 || candleWidth > 34
+                    || bodyTops.isEmpty() || bodyBottoms.isEmpty()) return;
+            Collections.sort(bodyTops);
+            Collections.sort(bodyBottoms);
+            int bodyTop = bodyTops.get(bodyTops.size() / 2);
+            int bodyBottom = bodyBottoms.get(bodyBottoms.size() / 2);
+            float closeY = side > 0 ? bodyTop : bodyBottom;
             out.add(new SignalEngine.CandlePoint(
-                    left + (start + end) * 0.5f, -centerY, candleHeight, side > 0));
+                    left + (start + end) * 0.5f, -closeY, candleHeight, side > 0));
         }
 
         private static List<SignalEngine.CandlePoint> rejectHeightOutliers(

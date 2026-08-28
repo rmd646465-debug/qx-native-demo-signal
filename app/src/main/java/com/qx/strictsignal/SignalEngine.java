@@ -10,7 +10,7 @@ import java.util.List;
  * A score is setup strength, not a claimed probability of winning.</p>
  */
 final class SignalEngine {
-    static final int MIN_CANDLES = 12;
+    static final int MIN_CANDLES = 24;
     static final int MAX_CANDLES = 45;
     static final int MAX_SCORE = 15;
 
@@ -140,29 +140,41 @@ final class SignalEngine {
         if (latest > priorMax) bullish += 1;
         else if (latest < priorMin) bearish += 1;
 
-        if (rsi >= 54 && rsi <= 72) bullish += 1;
-        else if (rsi <= 46 && rsi >= 28) bearish += 1;
+        if (rsi >= 56 && rsi <= 68) bullish += 1;
+        else if (rsi <= 44 && rsi >= 32) bearish += 1;
 
         float netMove = prices[prices.length - 1] - prices[0];
         if (trendEfficiency >= 0.30f && netMove > 0f) bullish += 1;
         else if (trendEfficiency >= 0.30f && netMove < 0f) bearish += 1;
 
-        if (rangePosition >= 0.68f && rangePosition <= 0.94f) bullish += 1;
-        else if (rangePosition <= 0.32f && rangePosition >= 0.06f) bearish += 1;
+        if (rangePosition >= 0.58f && rangePosition <= 0.88f) bullish += 1;
+        else if (rangePosition <= 0.42f && rangePosition >= 0.12f) bearish += 1;
 
         int net = bullish - bearish;
         String direction = "WAIT";
-        if (bullish >= 8 && net >= 3 && mediumSlope > 0f && longSlope >= -0.01f) direction = "UP";
-        else if (bearish >= 8 && net <= -3 && mediumSlope < 0f && longSlope <= 0.01f) direction = "DOWN";
+        if (bullish >= 10 && net >= 5 && shortSlope > 0.04f
+                && mediumSlope > 0.035f && longSlope > 0.02f
+                && recentColorBalance >= 1 && trendEfficiency >= 0.34f) {
+            direction = "UP";
+        } else if (bearish >= 10 && net <= -5 && shortSlope < -0.04f
+                && mediumSlope < -0.035f && longSlope < -0.02f
+                && recentColorBalance <= -1 && trendEfficiency >= 0.34f) {
+            direction = "DOWN";
+        }
 
-        boolean overextended = ("UP".equals(direction) && rsi > 76)
-                || ("DOWN".equals(direction) && rsi < 24);
-        boolean choppy = trendEfficiency < 0.24f && Math.abs(longSlope) < 0.055f;
-        boolean deadMarket = averageMove / averageHeight < 0.025f;
-        boolean volatilityShock = maximumMove / averageHeight > 3.2f;
+        boolean overextended = ("UP".equals(direction) && rsi > 70)
+                || ("DOWN".equals(direction) && rsi < 30);
+        boolean choppy = trendEfficiency < 0.30f || Math.abs(longSlope) < 0.025f;
+        boolean deadMarket = averageMove / averageHeight < 0.04f;
+        boolean volatilityShock = maximumMove / averageHeight > 2.8f;
         boolean trendConflict = (shortSlope > 0.08f && longSlope < -0.04f)
                 || (shortSlope < -0.08f && longSlope > 0.04f);
-        if (overextended || choppy || deadMarket || volatilityShock || trendConflict) {
+        boolean lateEntry = ("UP".equals(direction) && rangePosition > 0.92f)
+                || ("DOWN".equals(direction) && rangePosition < 0.08f);
+        float latestHeightRatio = candles.get(candles.size() - 1).height / averageHeight;
+        boolean oversizedFinalCandle = latestHeightRatio > 2.4f;
+        if (overextended || choppy || deadMarket || volatilityShock || trendConflict
+                || lateEntry || oversizedFinalCandle) {
             direction = "WAIT";
         }
 
@@ -175,7 +187,9 @@ final class SignalEngine {
                 : choppy ? " • choppy"
                 : deadMarket ? " • low volatility"
                 : volatilityShock ? " • volatility shock"
-                : trendConflict ? " • trend conflict" : "";
+                : trendConflict ? " • trend conflict"
+                : lateEntry ? " • late entry"
+                : oversizedFinalCandle ? " • oversized candle" : "";
         String detail = "UP " + bullish + "/" + MAX_SCORE
                 + " • DOWN " + bearish + "/" + MAX_SCORE
                 + " • trend " + Math.round(trendEfficiency * 100f) + "%" + filter;

@@ -107,3 +107,20 @@ v3.0 AUTO ASSET SCANNER + EXPIRY ASSISTANT
   probability বা profit guarantee নয়।
 - Bot কখনো Up/Down trade button, investment বা order touch করে না। Asset-list
   HTML বদলে scanner ব্যর্থ হলেও আগের current-chart analysis ব্যবহারযোগ্য থাকবে।
+
+v3.1 PRECISION + CLOSED-CANDLE UPDATE
+=====================================
+
+- ১-minute chart-এর strength দিয়ে ৫-minute expiry বলা যাচাই করা ছিল না; তাই
+  ৩/৫-minute recommendation বাদ দিয়ে এখন কেবল ১ minute, অথবা সবচেয়ে শক্তিশালী
+  aligned setup-এ ২ minute দেখাবে।
+- অন্তত ২৫টি candle visible লাগে; ডান পাশের তৈরি-হওয়া live candle বাদ দিয়ে
+  কমপক্ষে ২৪টি closed candle analysis করে, তাই repaint/false signal কমে।
+- Signal rule ৮/১৫ ও ৩-point lead থেকে ১০/১৫ ও ৫-point lead করা হয়েছে। সঙ্গে
+  short/medium/long trend, trend efficiency ও recent candle direction মিলতে হবে।
+- Current chart ও AUTO SCAN—দুই mode-এই ৩টি matching frame লাগে।
+- Candle-এর পুরো center-এর বদলে coloured body edge-এর median দিয়ে close-price
+  proxy নেওয়া হয়; late entry, overextended, oversized candle, low volatility,
+  choppy, shock ও trend conflict হলে WAIT দেখায়।
+- Asset list থেকে payout পড়া গেলে AUTO SCAN ৯০% বা বেশি payout-কে অগ্রাধিকার দেয়।
+- লক্ষ্য false signal কমানো; কোনো নির্দিষ্ট win rate বা profit নিশ্চিত নয়।

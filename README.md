@@ -100,6 +100,24 @@ create a bearish-only bias. Version 2:
   trade. If the platform changes its asset-list HTML, current-chart mode remains
   available and the scanner reports that the list is unavailable.
 
+## Version 3.1 precision and closed-candle update
+
+- Removes the unvalidated 3/5-minute expiry mapping. A 1-minute rendered chart
+  cannot justify a 5-minute recommendation from setup strength alone. Precision
+  mode now suggests only 1 minute, or 2 minutes for the strongest aligned setup.
+- Requires 25 visible candles, discards the rightmost still-forming candle, and
+  analyzes at least 24 closed candles to reduce repainting.
+- Raises directional acceptance from 8/15 with a 3-point lead to 10/15 with a
+  5-point lead, strict short/medium/long alignment, trend-efficiency and recent
+  candle-direction agreement.
+- Requires three matching frames in both current-chart and AUTO SCAN modes.
+- Uses the median coloured body edges as a more stable close-price proxy instead
+  of the old full-candle center, and rejects late, overextended, oversized,
+  low-volatility, choppy, shock and trend-conflict entries.
+- AUTO SCAN prefers assets with at least 90% payout when the payout is readable
+  from the platform list. The changes are designed to reduce false positives;
+  they do not establish or guarantee a win rate.
+
 ## What it does
 
 - Shows the full official Quotex demo page inside the Android app, including

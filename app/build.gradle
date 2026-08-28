@@ -10,8 +10,8 @@ android {
         applicationId "com.qx.strictsignal"
         minSdk 26
         targetSdk 35
-        versionCode 11
-        versionName "3.0.0-auto-asset-scanner"
+        versionCode 12
+        versionName "3.1.0-precision-closed-candle"
     }
 
     buildTypes {
