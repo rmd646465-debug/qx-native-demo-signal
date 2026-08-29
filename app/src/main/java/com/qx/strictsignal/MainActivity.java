@@ -72,6 +72,7 @@ public final class MainActivity extends Activity {
     private int assetScanIndex;
     private String currentAssetName = "CURRENT ASSET";
     private String lastCandidate = "WAIT";
+    private String lastCandidateAsset = "";
     private int candidateStreak;
     private int startUrlIndex;
     private String currentLoadUrl = START_URLS[0];
@@ -80,8 +81,7 @@ public final class MainActivity extends Activity {
     private final Runnable scanLoop = new Runnable() {
         @Override public void run() {
             if (scanning && pageReady && !analysisBusy && !assetScanActive) {
-                refreshCurrentAssetName(null);
-                captureAndAnalyze();
+                refreshCurrentAssetName(this::captureAndAnalyze);
             }
             mainHandler.postDelayed(this, SCAN_INTERVAL_MS);
         }
@@ -397,7 +397,13 @@ public final class MainActivity extends Activity {
             try {
                 Object parsed = new JSONTokener(value).nextValue();
                 if (parsed instanceof String && !((String) parsed).trim().isEmpty()) {
-                    currentAssetName = ((String) parsed).trim();
+                    String detectedAsset = ((String) parsed).trim();
+                    if (!detectedAsset.equals(currentAssetName)) {
+                        lastCandidate = "WAIT";
+                        lastCandidateAsset = "";
+                        candidateStreak = 0;
+                    }
+                    currentAssetName = detectedAsset;
                 }
             } catch (Throwable ignored) {
                 // The current-chart analyzer remains usable if page labels change.
@@ -609,12 +615,15 @@ public final class MainActivity extends Activity {
     private AnalysisResult stabilize(AnalysisResult result) {
         if ("WAIT".equals(result.direction)) {
             lastCandidate = "WAIT";
+            lastCandidateAsset = "";
             candidateStreak = 0;
             return result;
         }
-        if (result.direction.equals(lastCandidate)) candidateStreak++;
+        if (result.direction.equals(lastCandidate)
+                && currentAssetName.equals(lastCandidateAsset)) candidateStreak++;
         else {
             lastCandidate = result.direction;
+            lastCandidateAsset = currentAssetName;
             candidateStreak = 1;
         }
         if (candidateStreak < 2) {
@@ -640,9 +649,8 @@ public final class MainActivity extends Activity {
         signalView.setText(symbol);
         signalView.setTextColor(color);
         if (result.strength > 0) {
-            int minutes = suggestedExpiryMinutes(result);
             strengthView.setText(currentAssetName + " • " + result.direction
-                    + " • " + minutes + " MIN DEMO");
+                    + " • " + result.expiryMinutes + " MIN DEMO");
             detailView.setText(result.strength + "% setup strength • Detected "
                     + result.candles + " candles • RSI " + result.rsi);
         } else {
@@ -650,10 +658,6 @@ public final class MainActivity extends Activity {
             detailView.setText("Detected " + result.candles + " candles • RSI "
                     + result.rsi + " • " + result.detail);
         }
-    }
-
-    private int suggestedExpiryMinutes(AnalysisResult result) {
-        return result.strength >= 90 ? 2 : 1;
     }
 
     private void showWait(String status, String detail) {
@@ -725,20 +729,23 @@ public final class MainActivity extends Activity {
         final int strength;
         final int candles;
         final int rsi;
+        final int expiryMinutes;
         final String status;
         final String detail;
 
-        AnalysisResult(String direction, int strength, int candles, int rsi, String status, String detail) {
+        AnalysisResult(String direction, int strength, int candles, int rsi,
+                       int expiryMinutes, String status, String detail) {
             this.direction = direction;
             this.strength = strength;
             this.candles = candles;
             this.rsi = rsi;
+            this.expiryMinutes = expiryMinutes;
             this.status = status;
             this.detail = detail;
         }
 
         static AnalysisResult waiting(String status, int candles, int rsi, String detail) {
-            return new AnalysisResult("WAIT", 0, candles, rsi, status, detail);
+            return new AnalysisResult("WAIT", 0, candles, rsi, 0, status, detail);
         }
     }
 
@@ -779,7 +786,7 @@ public final class MainActivity extends Activity {
                             decision.detail + " • filters disagree");
                 }
                 return new AnalysisResult(decision.direction, decision.strength, candles.size(),
-                        decision.rsi, "HIGH CONFIRMATION",
+                        decision.rsi, decision.expiryMinutes, "HIGH CONFIRMATION",
                         decision.detail + " • manual next-candle entry • demo only");
             } finally {
                 if (bitmap != source) bitmap.recycle();

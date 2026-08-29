@@ -138,3 +138,18 @@ v3.2 ADAPTIVE ELIGIBLE-SIGNAL UPDATE
   ৮৬+ stable setup পেলে সঙ্গে সঙ্গে সেই currency ও signal দেখায়।
 - Choppy, low-volatility, shock, conflict, overextended, late বা oversized candle
   হলে WAIT থাকবে। কোনো hack, trade click, credential access বা win guarantee নেই।
+
+v3.3 PER-ASSET + MULTI-HORIZON UPDATE
+=====================================
+
+- প্রতিটি currency-র confirmation এখন আলাদা। Asset বদলালে আগের currency-র
+  UP/DOWN streak reset হয়; দুই currency-র chart মিশে signal হবে না।
+- Visible currency name পড়ার পরে সেই chart capture হয়, তাই প্রতিটি asset নিজের
+  rendered candle অনুযায়ী আলাদা analysis পায়।
+- ২/৩/৫-minute DEMO suggestion ফিরেছে, কিন্তু strength থেকে অন্ধ mapping নয়:
+  ২m normal valid setup; ৩m-এর জন্য অন্তত ২৮ closed candle ও stronger long trend;
+  ৫m-এর জন্য অন্তত ৩৬ closed candle এবং আরও বেশি trend persistence বাধ্যতামূলক।
+- Regression trend, EMA, MACD impulse, RSI, momentum, candle balance, breakout,
+  range position, trend efficiency ও আগের সব safety WAIT filter একসঙ্গে কাজ করে।
+- এটি প্রকাশিত legal technical analysis-এর experimental প্রয়োগ; কোনো secret
+  foreign trick, hack, auto-trade বা profit guarantee নয়।

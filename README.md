@@ -135,6 +135,25 @@ create a bearish-only bias. Version 2:
 - This is legal on-device visual technical analysis, not an exploit, hidden
   Quotex API, credential reader, auto-trader or guaranteed-profit system.
 
+## Version 3.3 per-asset multi-horizon update
+
+- Each currency now owns a separate confirmation state. Manually or
+  automatically changing the asset clears the prior asset's UP/DOWN streak, so
+  two different charts can never be combined into one signal.
+- Current-chart analysis waits for the visible asset name before capturing its
+  pixels. Every asset is therefore scored only from its own rendered candles.
+- Restores 2/3/5-minute DEMO suggestions with distinct rules: 2 minutes is the
+  normal valid setup; 3 minutes needs at least 28 closed candles plus stronger
+  directional lead, long slope and trend efficiency; 5 minutes needs at least
+  36 closed candles and still stricter persistence. Setup strength alone cannot
+  produce a long expiry.
+- Keeps the legal confluence stack: multi-scale regression trend, EMA gap,
+  MACD impulse, RSI, momentum, candle balance, breakout, range position and
+  trend efficiency, followed by the existing safety WAIT filters.
+- Public research on technical indicators is mixed and does not establish a
+  secret foreign strategy or guaranteed performance. This build remains an
+  experimental visual DEMO assistant and never places a trade.
+
 ## What it does
 
 - Shows the full official Quotex demo page inside the Android app, including

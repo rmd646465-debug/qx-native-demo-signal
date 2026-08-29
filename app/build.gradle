@@ -10,8 +10,8 @@ android {
         applicationId "com.qx.strictsignal"
         minSdk 26
         targetSdk 35
-        versionCode 13
-        versionName "3.2.0-adaptive-eligible-signal"
+        versionCode 14
+        versionName "3.3.0-per-asset-multi-horizon"
     }
 
     buildTypes {

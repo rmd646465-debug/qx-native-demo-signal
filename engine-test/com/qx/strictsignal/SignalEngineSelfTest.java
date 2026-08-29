@@ -36,6 +36,19 @@ public final class SignalEngineSelfTest {
         return candles;
     }
 
+    private static List<SignalEngine.CandlePoint> persistentTrend(int direction) {
+        List<SignalEngine.CandlePoint> candles = new ArrayList<>();
+        float price = 100f;
+        for (int i = 0; i < 42; i++) {
+            float delta;
+            if (i < 28) delta = (i % 2 == 0 ? 2f : -0.5f) * direction;
+            else delta = (i % 2 == 0 ? 1f : -0.5f) * direction;
+            price += delta;
+            candles.add(new SignalEngine.CandlePoint(i * 12f, price, 2f, delta > 0));
+        }
+        return candles;
+    }
+
     private static void require(boolean condition, String message) {
         if (!condition) throw new AssertionError(message);
     }
@@ -45,6 +58,8 @@ public final class SignalEngineSelfTest {
         SignalEngine.Decision down = SignalEngine.analyze(trend(-1));
         SignalEngine.Decision wait = SignalEngine.analyze(flat());
         SignalEngine.Decision shockWait = SignalEngine.analyze(shock());
+        SignalEngine.Decision longUp = SignalEngine.analyze(persistentTrend(1));
+        SignalEngine.Decision longDown = SignalEngine.analyze(persistentTrend(-1));
 
         require("UP".equals(up.direction), "rising mirror must produce UP: " + up.detail);
         require("DOWN".equals(down.direction), "falling mirror must produce DOWN: " + down.detail);
@@ -56,11 +71,16 @@ public final class SignalEngineSelfTest {
         require(up.bearishPoints == down.bullishPoints,
                 "mirrored opposing points must be equal");
         require(up.strength == down.strength, "mirrored setup strength must be equal");
+        require(longUp.expiryMinutes == longDown.expiryMinutes,
+                "mirrored expiry horizons must be equal");
+        require(longUp.expiryMinutes >= 3,
+                "persistent closed-candle trend must unlock a longer horizon: " + longUp.detail);
 
         System.out.println("PASS: UP/DOWN mirror symmetry, choppy WAIT and shock WAIT filters");
         System.out.println("UP   " + up.detail + " • strength " + up.strength);
         System.out.println("DOWN " + down.detail + " • strength " + down.strength);
         System.out.println("WAIT " + wait.detail);
         System.out.println("SHOCK " + shockWait.detail);
+        System.out.println("HORIZON " + longUp.expiryMinutes + "m • " + longUp.detail);
     }
 }

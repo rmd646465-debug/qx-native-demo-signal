@@ -34,15 +34,17 @@ final class SignalEngine {
         final int rsi;
         final int bullishPoints;
         final int bearishPoints;
+        final int expiryMinutes;
         final String detail;
 
         Decision(String direction, int strength, int rsi, int bullishPoints,
-                 int bearishPoints, String detail) {
+                 int bearishPoints, int expiryMinutes, String detail) {
             this.direction = direction;
             this.strength = strength;
             this.rsi = rsi;
             this.bullishPoints = bullishPoints;
             this.bearishPoints = bearishPoints;
+            this.expiryMinutes = expiryMinutes;
             this.detail = detail;
         }
     }
@@ -183,6 +185,21 @@ final class SignalEngine {
                 ? 0
                 : Math.min(93, 50 + winningSide * 3
                         + Math.round(Math.min(10f, trendEfficiency * 12f)));
+        int expiryMinutes = 0;
+        if (!"WAIT".equals(direction)) {
+            // Longer expiries require progressively more closed history and a
+            // persistent long trend; strength alone never creates a 3m/5m call.
+            int directionalLead = Math.abs(bullish - bearish);
+            if (candles.size() >= 36 && winningSide >= 11 && directionalLead >= 6
+                    && trendEfficiency >= 0.48f && Math.abs(longSlope) >= 0.075f) {
+                expiryMinutes = 5;
+            } else if (candles.size() >= 28 && winningSide >= 10 && directionalLead >= 5
+                    && trendEfficiency >= 0.40f && Math.abs(longSlope) >= 0.055f) {
+                expiryMinutes = 3;
+            } else {
+                expiryMinutes = 2;
+            }
+        }
         String filter = overextended ? " • overextended"
                 : choppy ? " • choppy"
                 : deadMarket ? " • low volatility"
@@ -193,7 +210,8 @@ final class SignalEngine {
         String detail = "UP " + bullish + "/" + MAX_SCORE
                 + " • DOWN " + bearish + "/" + MAX_SCORE
                 + " • trend " + Math.round(trendEfficiency * 100f) + "%" + filter;
-        return new Decision(direction, strength, rsi, bullish, bearish, detail);
+        return new Decision(direction, strength, rsi, bullish, bearish,
+                expiryMinutes, detail);
     }
 
     private static float ema(float[] values, int period) {
