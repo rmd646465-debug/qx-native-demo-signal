@@ -1,4 +1,4 @@
-package com.qx.strictsignal;
+package com.qx.adaptiveedge;
 
 import android.app.Activity;
 import android.graphics.Bitmap;
@@ -31,8 +31,10 @@ import org.json.JSONObject;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
@@ -51,8 +53,9 @@ public final class MainActivity extends Activity {
             "https://market-qx.pro/en/demo-trade",
             "https://quotex.com/en/demo-trade"
     };
-    private static final long SCAN_INTERVAL_MS = 1700L;
-    private static final long CHART_WARMUP_MS = 2600L;
+    private static final long SCAN_INTERVAL_MS = 1250L;
+    private static final long CHART_WARMUP_MS = 2200L;
+    private static final long CONFIRMATION_STALE_MS = 8000L;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService analyzerExecutor = Executors.newSingleThreadExecutor();
@@ -60,6 +63,7 @@ public final class MainActivity extends Activity {
     private TextView signalView;
     private TextView strengthView;
     private TextView detailView;
+    private TextView waitView;
     private TextView connectionView;
     private Button toggleButton;
     private Button assetScanButton;
@@ -69,11 +73,10 @@ public final class MainActivity extends Activity {
     private boolean assetScanActive;
     private final List<String> assetQueue = new ArrayList<>();
     private final List<AssetScanResult> assetScanResults = new ArrayList<>();
+    private final Map<String, ConfirmationState> confirmationByAsset = new HashMap<>();
+    private final Map<String, WaitForecast> waitForecastByAsset = new HashMap<>();
     private int assetScanIndex;
     private String currentAssetName = "CURRENT ASSET";
-    private String lastCandidate = "WAIT";
-    private String lastCandidateAsset = "";
-    private int candidateStreak;
     private int startUrlIndex;
     private String currentLoadUrl = START_URLS[0];
     private String failedMainFrameUrl = "";
@@ -87,6 +90,13 @@ public final class MainActivity extends Activity {
         }
     };
 
+    private final Runnable waitTicker = new Runnable() {
+        @Override public void run() {
+            updateWaitCountdown();
+            mainHandler.postDelayed(this, 1000L);
+        }
+    };
+
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -94,6 +104,7 @@ public final class MainActivity extends Activity {
         configureWebView();
         loadStartUrl(0, true);
         mainHandler.postDelayed(scanLoop, 3500L);
+        mainHandler.postDelayed(waitTicker, 1000L);
     }
 
     private View buildUi() {
@@ -106,7 +117,7 @@ public final class MainActivity extends Activity {
         header.setPadding(dp(14), dp(10), dp(10), dp(9));
         header.setBackgroundColor(Color.rgb(10, 18, 32));
 
-        TextView title = text("QX Native Demo Signal", 16, Color.WHITE, true);
+        TextView title = text("QX Adaptive Demo Signal", 16, Color.WHITE, true);
         header.addView(title, new LinearLayout.LayoutParams(0, dp(44), 1f));
         connectionView = text("CONNECTING", 10, Color.rgb(245, 179, 66), true);
         connectionView.setGravity(Gravity.CENTER);
@@ -126,9 +137,12 @@ public final class MainActivity extends Activity {
         strengthView.setGravity(Gravity.CENTER);
         detailView = text("ADAPTIVE MODE • CLOSED CANDLES • DEMO ONLY", 9, Color.rgb(114, 130, 153), false);
         detailView.setGravity(Gravity.CENTER);
-        signalPanel.addView(signalView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38)));
-        signalPanel.addView(strengthView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(22)));
+        waitView = text("Reading the current currency chart…", 10, Color.rgb(245, 179, 66), true);
+        waitView.setGravity(Gravity.CENTER);
+        signalPanel.addView(signalView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)));
+        signalPanel.addView(strengthView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(20)));
         signalPanel.addView(detailView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(20)));
+        signalPanel.addView(waitView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(20)));
         root.addView(signalPanel);
 
         webView = new WebView(this);
@@ -173,7 +187,7 @@ public final class MainActivity extends Activity {
         controls.addView(reload, reloadParams);
         root.addView(controls);
 
-        TextView risk = text("DEMO ONLY • Signals are experimental • No win guarantee • No auto-trade", 9, Color.rgb(255, 204, 111), true);
+        TextView risk = text("SET CHART TO 1 MIN • DEMO ONLY • NO WIN GUARANTEE • NO AUTO-TRADE", 9, Color.rgb(255, 204, 111), true);
         risk.setGravity(Gravity.CENTER);
         risk.setPadding(dp(8), dp(6), dp(8), dp(7));
         root.addView(risk);
@@ -288,7 +302,7 @@ public final class MainActivity extends Activity {
         failedMainFrameUrl = "";
         connectionView.setText("LIVE PAGE");
         connectionView.setTextColor(Color.rgb(80, 230, 169));
-        detailView.setText("Official demo page • adaptive eligible-signal analysis");
+        detailView.setText("Per-currency regime analysis • trend / breakout / range");
         refreshCurrentAssetName(null);
     }
 
@@ -370,8 +384,8 @@ public final class MainActivity extends Activity {
                 + "const pm=t.match(/(\\d{2,3})\\s*%/),p=pm?parseInt(pm[1],10):0;"
                 + "const name=pair+(t.includes('OTC')?' (OTC)':'');const old=map.get(pair);"
                 + "if(!old||p>old.payout||(name.includes('OTC')&&!old.name.includes('OTC')))map.set(pair,{name:name,payout:p});}"
-                + "return Array.from(map.values()).filter(x=>x.payout===0||x.payout>=90)"
-                + ".sort((a,b)=>b.payout-a.payout).map(x=>x.name).slice(0,8);})()";
+                + "return Array.from(map.values()).filter(x=>x.payout===0||x.payout>=85)"
+                + ".sort((a,b)=>b.payout-a.payout).map(x=>x.name).slice(0,12);})()";
     }
 
     private String selectAssetScript(String asset) {
@@ -397,13 +411,7 @@ public final class MainActivity extends Activity {
             try {
                 Object parsed = new JSONTokener(value).nextValue();
                 if (parsed instanceof String && !((String) parsed).trim().isEmpty()) {
-                    String detectedAsset = ((String) parsed).trim();
-                    if (!detectedAsset.equals(currentAssetName)) {
-                        lastCandidate = "WAIT";
-                        lastCandidateAsset = "";
-                        candidateStreak = 0;
-                    }
-                    currentAssetName = detectedAsset;
+                    currentAssetName = ((String) parsed).trim();
                 }
             } catch (Throwable ignored) {
                 // The current-chart analyzer remains usable if page labels change.
@@ -421,10 +429,8 @@ public final class MainActivity extends Activity {
         assetQueue.clear();
         assetScanResults.clear();
         assetScanIndex = 0;
-        lastCandidate = "WAIT";
-        candidateStreak = 0;
         assetScanButton.setText("STOP SCAN");
-        showWait("Opening currency list", "Reading visible/open Quotex assets only");
+        showWait("Opening currency list", "Analysis-only scan • trade controls stay untouched");
         webView.evaluateJavascript(openAssetListScript(), ignored ->
                 mainHandler.postDelayed(this::collectAssetQueue, 900L));
     }
@@ -458,7 +464,7 @@ public final class MainActivity extends Activity {
         }
         String asset = assetQueue.get(assetScanIndex);
         showWait("Scanning " + (assetScanIndex + 1) + "/" + assetQueue.size(),
-                asset + " • two closed-chart confirmations");
+                asset + " • adaptive profile + two fast confirmations");
         Consumer<Boolean> selected = ok -> {
             if (!assetScanActive) return;
             if (!ok) {
@@ -492,17 +498,22 @@ public final class MainActivity extends Activity {
                 AnalysisResult stable = second;
                 boolean sameDirection = first.direction.equals(second.direction);
                 boolean sameWaitReason = !"WAIT".equals(first.direction)
-                        || first.status.equals(second.status);
-                if (!sameDirection || !sameWaitReason) {
+                        || first.profile.equals(second.profile);
+                boolean sameSignalProfile = "WAIT".equals(first.direction)
+                        || (first.profile.equals(second.profile)
+                        && first.expiryMinutes == second.expiryMinutes);
+                if (!sameDirection || !sameWaitReason || !sameSignalProfile) {
+                    int readiness = Math.max(first.readiness, second.readiness);
                     stable = AnalysisResult.waiting("Unstable setup",
                             Math.max(first.candles, second.candles), second.rsi,
-                            "Two scans did not agree • skipped");
+                            "UNSTABLE WAIT", readiness >= 70 ? 1 : 2,
+                            readiness, "Two frames did not agree • kept as WAIT");
                 }
                 assetScanResults.add(new AssetScanResult(asset, stable));
 
                 // A genuinely strong eligible asset can be returned immediately;
                 // weaker candidates are still ranked after the remaining scan.
-                if (!"WAIT".equals(stable.direction) && stable.strength >= 86) {
+                if (!"WAIT".equals(stable.direction) && stable.strength >= 84) {
                     assetScanActive = false;
                     assetScanButton.setText("AUTO SCAN");
                     currentAssetName = asset;
@@ -518,16 +529,30 @@ public final class MainActivity extends Activity {
 
     private void finishAssetScan() {
         AssetScanResult best = null;
+        AssetScanResult bestWait = null;
         for (AssetScanResult candidate : assetScanResults) {
-            if ("WAIT".equals(candidate.result.direction)) continue;
-            if (best == null || candidate.result.strength > best.result.strength) best = candidate;
+            if ("WAIT".equals(candidate.result.direction)) {
+                if (bestWait == null
+                        || candidate.result.readiness > bestWait.result.readiness) {
+                    bestWait = candidate;
+                }
+            } else if (best == null || candidate.result.strength > best.result.strength) {
+                best = candidate;
+            }
         }
         assetScanActive = false;
         assetScanButton.setText("AUTO SCAN");
         if (best == null) {
-            currentAssetName = "SCANNED " + assetScanResults.size() + " ASSETS";
-            renderResult(AnalysisResult.waiting("No high-confirmation asset", 0, 0,
-                    "All scanned setups were WAIT • no forced signal"));
+            if (bestWait != null) {
+                currentAssetName = bestWait.asset;
+                renderResult(bestWait.result);
+                openThenSelectAsset(bestWait.asset, ignored -> { });
+            } else {
+                currentAssetName = "SCANNED " + assetScanResults.size() + " ASSETS";
+                renderResult(AnalysisResult.waiting("No eligible asset", 0, 0,
+                        "SCAN COMPLETE", 0, 0,
+                        "All scanned charts remained WAIT • no forced signal"));
+            }
             return;
         }
         AssetScanResult winner = best;
@@ -609,26 +634,30 @@ public final class MainActivity extends Activity {
     private void deliverAnalysis(Consumer<AnalysisResult> receiver, AnalysisResult result) {
         analysisBusy = false;
         if (receiver != null) receiver.accept(result);
-        else renderResult(stabilize(result));
+        else renderResult(stabilize(currentAssetName, result));
     }
 
-    private AnalysisResult stabilize(AnalysisResult result) {
+    private AnalysisResult stabilize(String asset, AnalysisResult result) {
+        ConfirmationState state = confirmationByAsset.computeIfAbsent(asset,
+                ignored -> new ConfirmationState());
         if ("WAIT".equals(result.direction)) {
-            lastCandidate = "WAIT";
-            lastCandidateAsset = "";
-            candidateStreak = 0;
+            state.reset();
             return result;
         }
-        if (result.direction.equals(lastCandidate)
-                && currentAssetName.equals(lastCandidateAsset)) candidateStreak++;
-        else {
-            lastCandidate = result.direction;
-            lastCandidateAsset = currentAssetName;
-            candidateStreak = 1;
-        }
-        if (candidateStreak < 2) {
+        long now = android.os.SystemClock.elapsedRealtime();
+        boolean stableContinuation = result.direction.equals(state.direction)
+                && result.profile.equals(state.profile)
+                && result.expiryMinutes == state.expiryMinutes
+                && now - state.lastSeenMs <= CONFIRMATION_STALE_MS;
+        state.streak = stableContinuation ? state.streak + 1 : 1;
+        state.direction = result.direction;
+        state.profile = result.profile;
+        state.expiryMinutes = result.expiryMinutes;
+        state.lastSeenMs = now;
+        if (state.streak < 2) {
             return AnalysisResult.waiting("Confirming " + result.direction, result.candles,
-                    result.rsi, result.detail + " • need 2 stable scans");
+                    result.rsi, result.profile, 1, Math.max(82, result.strength),
+                    result.detail + " • second matching frame required");
         }
         return result;
     }
@@ -638,10 +667,10 @@ public final class MainActivity extends Activity {
         String symbol;
         if ("UP".equals(result.direction)) {
             color = Color.rgb(22, 199, 132);
-            symbol = "↑ UP";
+            symbol = "↑ UP • " + result.expiryMinutes + " MIN";
         } else if ("DOWN".equals(result.direction)) {
             color = Color.rgb(239, 83, 80);
-            symbol = "↓ DOWN";
+            symbol = "↓ DOWN • " + result.expiryMinutes + " MIN";
         } else {
             color = Color.rgb(245, 179, 66);
             symbol = "WAIT";
@@ -649,15 +678,53 @@ public final class MainActivity extends Activity {
         signalView.setText(symbol);
         signalView.setTextColor(color);
         if (result.strength > 0) {
-            strengthView.setText(currentAssetName + " • " + result.direction
-                    + " • " + result.expiryMinutes + " MIN DEMO");
-            detailView.setText(result.strength + "% setup strength • Detected "
-                    + result.candles + " candles • RSI " + result.rsi);
+            waitForecastByAsset.remove(currentAssetName);
+            strengthView.setText(currentAssetName + " • " + result.profile
+                    + " • SETUP " + result.strength + "/100");
+            detailView.setText("Detected " + result.candles + " closed candles • RSI "
+                    + result.rsi + " • manual demo only");
+            waitView.setText("ELIGIBLE NOW • TWO FRAMES MATCHED • NO AUTO-TRADE");
+            waitView.setTextColor(color);
         } else {
-            strengthView.setText(currentAssetName + " • " + result.status);
+            strengthView.setText(currentAssetName + " • " + result.profile
+                    + (result.readiness > 0 ? " • READY " + result.readiness + "/100" : ""));
             detailView.setText("Detected " + result.candles + " candles • RSI "
                     + result.rsi + " • " + result.detail);
+            updateWaitForecast(result);
         }
+    }
+
+    private void updateWaitForecast(AnalysisResult result) {
+        waitView.setTextColor(Color.rgb(245, 179, 66));
+        if (result.waitMinutes <= 0) {
+            waitForecastByAsset.remove(currentAssetName);
+            waitView.setText("WEAK OR CONFLICTING SETUP • WAIT / TRY ANOTHER CURRENCY");
+            return;
+        }
+        long now = android.os.SystemClock.elapsedRealtime();
+        WaitForecast existing = waitForecastByAsset.get(currentAssetName);
+        if (existing == null || !result.profile.equals(existing.profile)
+                || existing.deadlineMs + 10000L < now) {
+            existing = new WaitForecast(result.profile,
+                    now + result.waitMinutes * 60000L);
+            waitForecastByAsset.put(currentAssetName, existing);
+        }
+        updateWaitCountdown();
+    }
+
+    private void updateWaitCountdown() {
+        if (waitView == null || currentAssetName == null) return;
+        WaitForecast forecast = waitForecastByAsset.get(currentAssetName);
+        if (forecast == null) return;
+        long remainingSeconds = Math.max(0L,
+                (forecast.deadlineMs - android.os.SystemClock.elapsedRealtime() + 999L) / 1000L);
+        if (remainingSeconds == 0L) {
+            waitView.setText("RECHECKING NOW • SIGNAL MAY REMAIN WAIT");
+            return;
+        }
+        long minutes = Math.max(1L, (remainingSeconds + 59L) / 60L);
+        waitView.setText("PLEASE WAIT ~" + minutes + " MIN FOR SIGNAL • ESTIMATE "
+                + remainingSeconds + "s");
     }
 
     private void showWait(String status, String detail) {
@@ -703,6 +770,7 @@ public final class MainActivity extends Activity {
 
     @Override protected void onDestroy() {
         mainHandler.removeCallbacks(scanLoop);
+        mainHandler.removeCallbacks(waitTicker);
         analyzerExecutor.shutdownNow();
         CookieManager.getInstance().flush();
         if (webView != null) webView.destroy();
@@ -724,6 +792,32 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private static final class ConfirmationState {
+        String direction = "WAIT";
+        String profile = "";
+        int expiryMinutes;
+        int streak;
+        long lastSeenMs;
+
+        void reset() {
+            direction = "WAIT";
+            profile = "";
+            expiryMinutes = 0;
+            streak = 0;
+            lastSeenMs = 0L;
+        }
+    }
+
+    private static final class WaitForecast {
+        final String profile;
+        final long deadlineMs;
+
+        WaitForecast(String profile, long deadlineMs) {
+            this.profile = profile;
+            this.deadlineMs = deadlineMs;
+        }
+    }
+
     private static final class AnalysisResult {
         final String direction;
         final int strength;
@@ -731,21 +825,35 @@ public final class MainActivity extends Activity {
         final int rsi;
         final int expiryMinutes;
         final String status;
+        final String profile;
+        final int waitMinutes;
+        final int readiness;
         final String detail;
 
         AnalysisResult(String direction, int strength, int candles, int rsi,
-                       int expiryMinutes, String status, String detail) {
+                       int expiryMinutes, String status, String profile,
+                       int waitMinutes, int readiness, String detail) {
             this.direction = direction;
             this.strength = strength;
             this.candles = candles;
             this.rsi = rsi;
             this.expiryMinutes = expiryMinutes;
             this.status = status;
+            this.profile = profile;
+            this.waitMinutes = waitMinutes;
+            this.readiness = readiness;
             this.detail = detail;
         }
 
         static AnalysisResult waiting(String status, int candles, int rsi, String detail) {
-            return new AnalysisResult("WAIT", 0, candles, rsi, 0, status, detail);
+            return waiting(status, candles, rsi, "WAIT", 0, 0, detail);
+        }
+
+        static AnalysisResult waiting(String status, int candles, int rsi,
+                                      String profile, int waitMinutes,
+                                      int readiness, String detail) {
+            return new AnalysisResult("WAIT", 0, candles, rsi, 0, status,
+                    profile, waitMinutes, readiness, detail);
         }
     }
 
@@ -782,11 +890,13 @@ public final class MainActivity extends Activity {
                 SignalEngine.Decision decision = SignalEngine.analyze(candles);
 
                 if ("WAIT".equals(decision.direction)) {
-                    return AnalysisResult.waiting("No 9-point confluence", candles.size(), decision.rsi,
-                            decision.detail + " • filters disagree");
+                    return AnalysisResult.waiting("Not eligible yet", candles.size(), decision.rsi,
+                            decision.profile, decision.waitMinutes, decision.readiness,
+                            decision.detail);
                 }
                 return new AnalysisResult(decision.direction, decision.strength, candles.size(),
-                        decision.rsi, decision.expiryMinutes, "HIGH CONFIRMATION",
+                        decision.rsi, decision.expiryMinutes, "ELIGIBLE SETUP",
+                        decision.profile, 0, 100,
                         decision.detail + " • manual next-candle entry • demo only");
             } finally {
                 if (bitmap != source) bitmap.recycle();
@@ -895,9 +1005,11 @@ public final class MainActivity extends Activity {
             Collections.sort(bodyBottoms);
             int bodyTop = bodyTops.get(bodyTops.size() / 2);
             int bodyBottom = bodyBottoms.get(bodyBottoms.size() / 2);
-            float closeY = side > 0 ? bodyTop : bodyBottom;
+            float open = side > 0 ? -bodyBottom : -bodyTop;
+            float close = side > 0 ? -bodyTop : -bodyBottom;
             out.add(new SignalEngine.CandlePoint(
-                    left + (start + end) * 0.5f, -closeY, candleHeight, side > 0));
+                    left + (start + end) * 0.5f,
+                    open, -top, -bottom, close, side > 0));
         }
 
         private static List<SignalEngine.CandlePoint> rejectHeightOutliers(

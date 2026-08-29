@@ -1,155 +1,73 @@
-QX NATIVE DEMO SIGNAL v2 — বাংলা নির্দেশনা
-==========================================
+QX ADAPTIVE DEMO SIGNAL v1.0 — বাংলা সারসংক্ষেপ
+================================================
 
-কী ঠিক করা হয়েছে
------------------
-১. পুরোনো অ্যাপ chart-এর নিচের লাল/সবুজ trade button-কেও candle pixel মনে করতে
-   পারত। এতে DOWN bias তৈরি হতো। v2 শুধু mobile chart band বিশ্লেষণ করে।
-২. UP এবং DOWN-এর scoring rule এখন পরস্পরের হুবহু mirror।
-৩. অস্বাভাবিক বড় coloured object candle হিসেবে বাদ দেওয়া হয়।
-৪. একই signal পরপর ২টি scan-এ না এলে UP/DOWN দেখায় না।
-৫. “confidence” নয়, “setup strength” দেখায়—এটি win probability নয়।
-৬. rising, falling এবং flat market-এর deterministic self-test যোগ করা হয়েছে।
-৭. qxbroker.com DNS error হলে official quotex.com address স্বয়ংক্রিয়ভাবে চেষ্টা করে।
-৮. error page-কে আর ভুলভাবে LIVE PAGE দেখায় না।
+এটি আগের APK-এর update নয়
+--------------------------
+- নতুন project/repository: qx-adaptive-demo-signal
+- নতুন App ID: com.qx.adaptiveedge
+- নতুন app name: QX Adaptive Demo Signal
+- তাই আগের QX Native Demo Signal নষ্ট বা replace হবে না; দুটো পাশাপাশি install হবে।
 
-APK বানানোর সহজ নিয়ম
----------------------
-১. ZIP extract করুন।
-২. পুরো qx-native-demo-signal-local folder একটি নতুন GitHub repository-তে upload করুন।
-৩. GitHub-এর Actions tab খুলুন।
-৪. “Build Android Demo APK” workflow চালান।
-৫. সফল run-এর Artifacts থেকে “QX-Native-Demo-APK-v2” download করুন।
-৬. ZIP খুলে app-debug.apk install করুন। পুরোনো APK signature conflict দিলে আগে
-   পুরোনো অ্যাপ uninstall করুন।
+একেক currency-তে একেক analysis
+--------------------------------
+একটি fixed formula সব chart-এ চালানো হয় না। দৃশ্যমান chart-এর অবস্থা বুঝে engine
+স্বয়ংক্রিয়ভাবে নিচের profile বেছে নেয়:
 
-ব্যবহারের নিয়ম
---------------
-- শুধু demo account-এ পরীক্ষা করুন।
-- chart-এ অন্তত ১২টি red/green candle দৃশ্যমান রাখুন।
-- signal না মিললে WAIT দেখানো স্বাভাবিক এবং নিরাপদ আচরণ।
-- অন্তত ১০০টি demo signal লিখে result যাচাই না করে real-money সিদ্ধান্ত নেবেন না।
-- ১০টির মধ্যে ৮টি profit বা কোনো profit নিশ্চিত নয়।
-v2.2 LIVE DEMO PAGE FIX
-=======================
+1. TREND + MOMENTUM
+   - short/medium/long regression trend
+   - EMA alignment, MACD impulse, RSI, ROC
+   - candle balance ও trend efficiency
 
-- App এখন marketing home page নয়, official /en/demo-trade page সরাসরি খোলে।
-- qxbroker.com থেকে market-qx.trade / market-qx.pro-তে official redirect হলেও
-  app সেটিকে LIVE DEMO হিসেবে গ্রহণ করে এবং chart analysis শুরু করে।
-- DNS, 403, 429 বা server error হলে চারটি official address পর্যায়ক্রমে চেষ্টা করে।
-- Custom bot user-agent সরানো হয়েছে; normal Android WebView identity ব্যবহার হয়।
-- Currency/asset বদলানো যাবে Quotex-এর নিজের live page-এর selector থেকে।
-- Selected asset/session রেখে RELOAD CHART কাজ করে।
+2. BREAKOUT + ROC
+   - আগের range break
+   - controlled volatility expansion
+   - trend এবং momentum একই direction
 
-সীমা: Quotex-এর private AI/API app-এর মধ্যে কপি করা হয়নি। Signal হলো on-device
-multi-filter candle analysis; profit বা 8/10 win guarantee নয়। Demo-তে test করুন।
+3. RANGE REVERSAL
+   - range-এর upper/lower edge
+   - RSI ও rolling-mean deviation
+   - multi-candle turn এবং wick rejection
 
-v2.3 HIGH-CONFIRMATION ENGINE
-=============================
+4. WAIT
+   - choppy, low-volatility, volatility shock
+   - trend conflict, late entry, oversized candle
+   - incomplete বা দুর্বল confluence
 
-- কমপক্ষে ১৬টি candle এবং ১৫ point-এর মধ্যে ৯ point confluence লাগে।
-- Short/medium/long trend, EMA, MACD impulse, RSI, momentum, candle balance,
-  breakout, trend efficiency এবং range position একসঙ্গে পরীক্ষা করে।
-- Choppy, low-volatility, sudden shock, conflicting trend ও overextended market
-  হলে UP/DOWN না দিয়ে WAIT দেখায়।
-- একই direction পরপর ৩টি scan-এ নিশ্চিত হলে signal দেখায়।
-- UP ও DOWN scoring পুরো mirror; কোনো দিককে অগ্রাধিকার দেওয়া হয়নি।
+প্রতি currency-র confirmation state আলাদা। দুই currency-র frame কখনো মিশবে না।
 
-v2.4 REFERENCE UI + SAVED DEMO SESSION
-======================================
+Signal ও অপেক্ষার নিয়ম
+----------------------
+- যোগ্য setup একই currency-তে পরপর ২ frame মিললে দ্রুত signal দেখাবে।
+- Signal-এর পাশেই UP/DOWN এবং 2 MIN / 3 MIN / 5 MIN থাকবে।
+- Developing setup হলে PLEASE WAIT ~1 MIN বা ~2 MIN এবং live seconds দেখাবে।
+- Estimate শেষ হলেও signal নিশ্চিত নয়; chart দুর্বল থাকলে WAIT-ই থাকবে।
+- দুর্বল chart-এ জোর করে signal বানাবে না।
 
-- Reference ছবির মতো title থেকে version number সরানো হয়েছে এবং LIVE PAGE রাখা হয়েছে।
-- Official page Sign In-এ পাঠালে LOGIN ONCE দেখায়; login page-এর colour আর candle
-  হিসেবে analyze হয় না।
-- User official page-এ একবার login করে DEMO বেছে নিলে cookie/session save থাকে;
-  পরে app খুললে live demo dashboard ফেরত আসতে পারে।
-- App password পড়ে না, login bypass করে না এবং নকল balance/chart দেখায় না।
+2/3/5 মিনিট আলাদা কেন
+----------------------
+- 2 MIN: normal eligible setup বা range reversal।
+- 3 MIN: কমপক্ষে 29 closed candle + stronger lead + persistent trend।
+- 5 MIN: কমপক্ষে 38 closed candle + আরও শক্ত long-horizon trend ও efficiency।
+- শুধু setup score বেশি হলেই 3/5 মিনিট হবে না।
 
-v2.5 CURRENT LIVE DOMAIN FIX
-============================
+AUTO SCAN
+---------
+- Quotex list-এ বর্তমানে visible/open সর্বোচ্চ 12টি currency scan করে।
+- readable payout বেশি হলে আগে দেখে।
+- শক্ত eligible currency পেলে পুরো list শেষ না করেই signal দেখায়।
+- Signal না পেলে সবচেয়ে কাছাকাছি developing currency-তে WAIT ও 1/2 minute estimate দেখায়।
+- কখনো amount, UP/DOWN trade button বা order touch করে না।
 
-- Screenshot-এ কাজ করা market-qx.info/en/ page এখন app প্রথমে খুলবে।
-- market-qx.info আর Chrome-এ বাইরে যাবে না; app-এর signal panel-এর নিচেই থাকবে।
-- market-quotex.pro redirect-ও app-এর ভেতরে গ্রহণ করা হবে।
-- Setup না থাকলে ভুল UP/DOWN নয়—WAIT দেখানো হবে।
+ব্যবহারের আগে
+------------
+1. Quotex DEMO account ব্যবহার করুন।
+2. chart timeframe 1 minute রাখুন।
+3. অন্তত 21টি red/green candle দৃশ্যমান রাখুন।
+4. Setup score win probability নয়।
+5. কোনো profit, 8/10 win বা guaranteed signal দাবি করা হয়নি।
+6. Real money ব্যবহার করবেন না; আগে কমপক্ষে 100টি forward demo result লিখে যাচাই করুন।
 
-v2.6 ADAPTIVE LIVE SIGNAL FIX
-=============================
-
-- আগের version chart-এর countdown না পড়ে ফোনের system-clock second দিয়ে timing
-  block করত। এই ভুল gate-এর কারণে valid setup-ও WAIT-এ আটকে থাকতে পারত; এটি সরানো হয়েছে।
-- এখন ১২টি detected candle থেকে analysis শুরু হয় এবং balanced ৮/১৫ confluence লাগে।
-- একই direction ২টি consecutive scan-এ stable হলে প্রায় ৫ সেকেন্ডে UP/DOWN দেখায়।
-- Medium/long trend agreement, choppy, low-volatility, shock, trend-conflict ও
-  overextended filter আগের মতো চালু আছে; unclear market-এ WAIT-ই দেখাবে।
-- Signal automatic, কিন্তু trade manual এবং demo-only; profit/win-rate নিশ্চিত নয়।
-
-v2.7 RENDERED CHART CAPTURE FIX
-===============================
-
-- Screenshot-এ candle দেখা গেলেও WebView.draw() কিছু Android/WebView device-এ
-  শুধু background bitmap দিচ্ছিল; তাই app ভুলভাবে Detected 0 candles দেখাত।
-- এখন Android PixelCopy দিয়ে screen-এ সত্যি render হওয়া WebView chart capture হয়।
-- Screenshot-এর একই chart crop/colour rules দিয়ে ২৮টি candle পাওয়া গেছে; অর্থাৎ
-  strategy নয়, frame capture-ই 0-candle সমস্যার মূল কারণ ছিল।
-- v2.6-এর ১২-candle minimum, balanced ৮/১৫ confluence, ২-scan confirmation,
-  symmetric UP/DOWN এবং safety WAIT filters অপরিবর্তিত আছে।
-
-v3.0 AUTO ASSET SCANNER + EXPIRY ASSISTANT
-==========================================
-
-- আগের embedded DEMO page ও current-chart signal mode অক্ষত রাখা হয়েছে।
-- নতুন AUTO SCAN button demo page-এর asset selector খুলে বর্তমানে visible/open
-  সর্বোচ্চ ১২টি currency name পড়ে এবং একেকটি chart নিজে switch করে scan করে।
-- প্রতি asset-এ ২টি rendered frame একই direction দিলে তবেই stable UP/DOWN result
-  ধরা হয়; সব result থেকে সবচেয়ে শক্তিশালী currency name ও signal দেখায়।
-- Setup strength থেকে manual DEMO expiry ১/২/৩/৫ মিনিট suggest করে। এটি win
-  probability বা profit guarantee নয়।
-- Bot কখনো Up/Down trade button, investment বা order touch করে না। Asset-list
-  HTML বদলে scanner ব্যর্থ হলেও আগের current-chart analysis ব্যবহারযোগ্য থাকবে।
-
-v3.1 PRECISION + CLOSED-CANDLE UPDATE
-=====================================
-
-- ১-minute chart-এর strength দিয়ে ৫-minute expiry বলা যাচাই করা ছিল না; তাই
-  ৩/৫-minute recommendation বাদ দিয়ে এখন কেবল ১ minute, অথবা সবচেয়ে শক্তিশালী
-  aligned setup-এ ২ minute দেখাবে।
-- অন্তত ২৫টি candle visible লাগে; ডান পাশের তৈরি-হওয়া live candle বাদ দিয়ে
-  কমপক্ষে ২৪টি closed candle analysis করে, তাই repaint/false signal কমে।
-- Signal rule ৮/১৫ ও ৩-point lead থেকে ১০/১৫ ও ৫-point lead করা হয়েছে। সঙ্গে
-  short/medium/long trend, trend efficiency ও recent candle direction মিলতে হবে।
-- Current chart ও AUTO SCAN—দুই mode-এই ৩টি matching frame লাগে।
-- Candle-এর পুরো center-এর বদলে coloured body edge-এর median দিয়ে close-price
-  proxy নেওয়া হয়; late entry, overextended, oversized candle, low volatility,
-  choppy, shock ও trend conflict হলে WAIT দেখায়।
-- Asset list থেকে payout পড়া গেলে AUTO SCAN ৯০% বা বেশি payout-কে অগ্রাধিকার দেয়।
-- লক্ষ্য false signal কমানো; কোনো নির্দিষ্ট win rate বা profit নিশ্চিত নয়।
-
-v3.2 ADAPTIVE ELIGIBLE-SIGNAL UPDATE
-====================================
-
-- Signal খুব দেরি হওয়ার মূল bottleneck কমানো হয়েছে: এখন ডান পাশের forming
-  candle বাদ দিয়ে ২০টি closed candle (মোট ২১টি visible) analysis করে।
-- ১০/১৫ ও ৫-point lead-এর বদলে balanced ৯/১৫ ও ৪-point lead; তবে তিনটি trend
-  slope, recent candle direction, RSI, trend efficiency এবং আগের সব WAIT filter
-  এখনও বাধ্যতামূলক।
-- Current chart ও AUTO SCAN-এ এক frame নয়, দুইটি matching frame লাগবে।
-- AUTO SCAN payout বেশি থেকে কম সাজিয়ে সর্বোচ্চ ৮টি visible currency দেখে;
-  ৮৬+ stable setup পেলে সঙ্গে সঙ্গে সেই currency ও signal দেখায়।
-- Choppy, low-volatility, shock, conflict, overextended, late বা oversized candle
-  হলে WAIT থাকবে। কোনো hack, trade click, credential access বা win guarantee নেই।
-
-v3.3 PER-ASSET + MULTI-HORIZON UPDATE
-=====================================
-
-- প্রতিটি currency-র confirmation এখন আলাদা। Asset বদলালে আগের currency-র
-  UP/DOWN streak reset হয়; দুই currency-র chart মিশে signal হবে না।
-- Visible currency name পড়ার পরে সেই chart capture হয়, তাই প্রতিটি asset নিজের
-  rendered candle অনুযায়ী আলাদা analysis পায়।
-- ২/৩/৫-minute DEMO suggestion ফিরেছে, কিন্তু strength থেকে অন্ধ mapping নয়:
-  ২m normal valid setup; ৩m-এর জন্য অন্তত ২৮ closed candle ও stronger long trend;
-  ৫m-এর জন্য অন্তত ৩৬ closed candle এবং আরও বেশি trend persistence বাধ্যতামূলক।
-- Regression trend, EMA, MACD impulse, RSI, momentum, candle balance, breakout,
-  range position, trend efficiency ও আগের সব safety WAIT filter একসঙ্গে কাজ করে।
-- এটি প্রকাশিত legal technical analysis-এর experimental প্রয়োগ; কোনো secret
-  foreign trick, hack, auto-trade বা profit guarantee নয়।
+APK build
+---------
+GitHub Actions → Build QX Adaptive Demo APK → successful run →
+Artifacts → QX-Adaptive-Demo-APK-v1 → app-debug.apk

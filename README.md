@@ -1,187 +1,105 @@
-# QX Native Demo Signal
+# QX Adaptive Demo Signal
 
-Android demo-only Quotex chart analyzer. The app loads the official Quotex web page inside a secure WebView and analyzes the rendered red/green candle pixels on-device.
+An Android **demo-only learning tool** that reads the currently rendered Quotex candle chart on-device and shows `UP`, `DOWN`, or `WAIT`. This is a completely separate application from `qx-native-demo-signal`:
 
-## Version 2 fix
+- new repository/project name: `qx-adaptive-demo-signal`
+- new Android application ID: `com.qx.adaptiveedge`
+- new app label: `QX Adaptive Demo Signal`
+- version starts at `1.0.0-adaptive-regime`
 
-The original wide pixel crop also saw red/green controls below the chart. In
-particular, the large red **Down** area could be mistaken for chart evidence and
-create a bearish-only bias. Version 2:
+The old app and this app can be installed side-by-side.
 
-- restricts detection to the mobile chart band and excludes the trade controls;
-- rejects abnormal-height objects that are not candles;
-- uses exactly mirrored bullish and bearish scoring rules;
-- requires two consecutive matching scans before showing UP or DOWN;
-- reports **setup strength**, not a made-up win probability;
-- includes a deterministic mirror test proving that rising and falling inputs
-  can produce UP and DOWN with equal strength.
+## What is different
 
-## Version 2.1 connection fix
+### Chart-regime adaptive analysis
 
-- Does not mark a WebView error page as `LIVE PAGE`.
-- Automatically tries the official `quotex.com` address when `qxbroker.com`
-  fails with a DNS host-lookup error.
-- Shows a clear DNS error message when neither official address can load.
+The app does not force one formula onto every currency. Each visible currency is analyzed independently and the engine chooses one of these profiles from that chart:
 
-## Version 2.2 live-demo fix
+1. **TREND + MOMENTUM** — multi-window regression, EMA alignment, MACD impulse, RSI, rate of change, candle balance and trend efficiency.
+2. **BREAKOUT + ROC** — channel break, controlled volatility expansion, multi-window trend agreement and momentum confirmation.
+3. **RANGE REVERSAL** — range location, RSI, deviation from the rolling mean, multi-candle turn and wick rejection.
+4. **WAIT profiles** — low volatility, erratic/choppy flow, volatility shock, conflicting trend, oversized candle, late entry or incomplete confluence.
 
-- Opens the official no-registration demo-trade route instead of the marketing home page.
-- Tries the official `qxbroker.com`, `market-qx.trade`, `market-qx.pro`, and
-  `quotex.com` demo routes in sequence when DNS, 403, 429, or server errors occur.
-- Accepts official cross-domain redirects, so a successful redirect can become
-  `LIVE DEMO` and start chart analysis.
-- Keeps the normal Android WebView identity and gives the live chart four
-  seconds to initialize before scanning.
-- Reloads the current selected asset page without discarding its session.
+Every bullish condition has an equivalent mirrored bearish condition. A deterministic test verifies UP/DOWN symmetry.
 
-## Version 2.3 adaptive high-confirmation engine
+### Per-currency state
 
-- Requires at least 16 detected candles and 9/15 directional confluence.
-- Combines short/medium/long trend, EMA alignment, MACD impulse, RSI,
-  momentum, candle balance, breakout, trend efficiency and range position.
-- Rejects choppy, very low-volatility, one-candle shock, conflicting-trend and
-  overextended setups.
-- Requires three consecutive matching scans before displaying UP or DOWN.
-- Keeps bullish and bearish rules exact mirrors and verifies both directions,
-  flat-market WAIT and volatility-shock WAIT in the deterministic build test.
+Confirmation history is stored by the visible currency name. Frames from two different currencies are never combined. A signal requires two matching recent frames for the same currency, profile, direction and expiry.
 
-## Version 2.4 reference UI and persistent official session
+### Faster eligible signals and useful WAIT output
 
-- Restores the reference title and `LIVE PAGE` status presentation.
-- Detects official Sign In/Registration pages and pauses chart analysis instead
-  of treating authentication pixels as candles.
-- Saves the official Quotex WebView cookie/session after the user signs in on
-  the official page and switches to DEMO, so later launches can return to the
-  live demo dashboard without the app reading or storing the password itself.
-- The embedded middle section remains the complete official page; it is not a
-  fake balance, copied chart, or simulated Quotex interface.
+- current-chart checks run about every 1.25 seconds;
+- a valid setup normally appears after the second matching frame;
+- `AUTO SCAN` checks up to 12 currently visible/open assets, higher displayed payouts first;
+- a strong eligible asset is returned immediately without finishing the full queue;
+- a developing setup shows `PLEASE WAIT ~1 MIN` or `~2 MIN` with a live estimate;
+- a weak/conflicting chart stays `WAIT` and does not manufacture a signal.
 
-## Version 2.5 current live-domain fix
+The wait time is a setup-development estimate, not a promise that a signal will appear.
 
-- Opens the user's currently working `market-qx.info/en/` live page first.
-- Keeps `market-qx.info` inside the app instead of sending it to Chrome.
-- Accepts the current `market-quotex.pro` redirect as part of the embedded live
-  page flow, while retaining the previous official fallback addresses.
+### Separate 2/3/5-minute rules
 
-## Version 2.6 adaptive live-signal fix
+The duration appears beside the direction, for example `UP • 3 MIN`.
 
-- Removes the incorrect phone-clock timing gate. The embedded chart countdown
-  cannot be inferred from the phone's wall-clock seconds, and that gate could
-  hold a valid chart setup at `WAIT`.
-- Starts analysis with 12 detected candles, requires balanced 8/15 directional
-  confluence, and still keeps medium/long-trend agreement plus all safety filters.
-- Requires two matching scans before showing UP or DOWN, so a stable valid setup
-  appears automatically in about five seconds instead of waiting for three scans.
-- Continues to show `WAIT` for choppy, low-volatility, shock, conflicting or
-  overextended charts. It does not force a trade signal.
+- **2 minutes:** normal eligible setup or range reversal;
+- **3 minutes:** at least 29 closed candles, stronger directional lead, persistent trend and controlled volatility;
+- **5 minutes:** at least 38 closed candles with stricter long-horizon slope, persistence and trend-efficiency checks.
 
-## Version 2.7 rendered-chart capture fix
+Strength alone cannot unlock 3 or 5 minutes. Use a **1-minute chart** so the displayed 2/3/5-minute demo horizon has the intended meaning.
 
-- Replaces `WebView.draw(Canvas)` capture with Android `PixelCopy`, which reads
-  the hardware-rendered WebView pixels actually visible on the phone.
-- Fixes the confirmed case where many red/green candles were visible but the
-  app continuously reported `Detected 0 candles` because only the WebView
-  background reached the analyzer bitmap.
-- Keeps the v2.6 12-candle minimum, balanced 8/15 confluence, two-scan
-  confirmation and all symmetric safety filters unchanged.
+## How chart reading works
 
-## Version 3.0 visible-asset scanner and expiry assistant
+- the full platform page remains visible in an Android WebView;
+- Android `PixelCopy` captures only the rendered chart frame;
+- the chart crop excludes the large red/green trade controls;
+- colored candle groups are converted into approximate open/high/low/close points;
+- the rightmost still-forming candle is discarded;
+- at least 20 closed candles plus the forming candle must be visible;
+- all captured frames stay on the phone.
 
-- Keeps the complete embedded DEMO page and the existing current-chart analyzer.
-- Adds a separate `AUTO SCAN` mode. It opens the platform asset selector, reads
-  up to 12 currently visible/open currency names, switches only among those
-  currency elements, and analyzes two rendered chart frames per asset.
-- Ranks only stable UP/DOWN results, returns the strongest asset name and
-  direction, and brings that asset back into view. If none pass, it returns
-  WAIT instead of manufacturing a recommendation.
-- Shows a rule-based manual DEMO expiry suggestion of 1, 2, 3 or 5 minutes from
-  setup strength. The duration is not a win probability or guarantee.
-- The scanner never clicks UP/DOWN, never sets an investment and never places a
-  trade. If the platform changes its asset-list HTML, current-chart mode remains
-  available and the scanner reports that the list is unavailable.
+The app does not read passwords, send screenshots to a server, set an amount, click UP/DOWN, or place an order.
 
-## Version 3.1 precision and closed-candle update
+## Research boundary
 
-- Removes the unvalidated 3/5-minute expiry mapping. A 1-minute rendered chart
-  cannot justify a 5-minute recommendation from setup strength alone. Precision
-  mode now suggests only 1 minute, or 2 minutes for the strongest aligned setup.
-- Requires 25 visible candles, discards the rightmost still-forming candle, and
-  analyzes at least 24 closed candles to reduce repainting.
-- Raises directional acceptance from 8/15 with a 3-point lead to 10/15 with a
-  5-point lead, strict short/medium/long alignment, trend-efficiency and recent
-  candle-direction agreement.
-- Requires three matching frames in both current-chart and AUTO SCAN modes.
-- Uses the median coloured body edges as a more stable close-price proxy instead
-  of the old full-candle center, and rejects late, overextended, oversized,
-  low-volatility, choppy, shock and trend-conflict entries.
-- AUTO SCAN prefers assets with at least 90% payout when the payout is readable
-  from the platform list. The changes are designed to reduce false positives;
-  they do not establish or guarantee a win rate.
+The adaptive design follows the general market-condition guidance in Quotex's own indicator article: trend tools for trending markets, oscillators/range tools for ranging markets, and volatility plus trend confirmation for volatile markets. It also uses the idea of time-series trend persistence as supporting research.
 
-## Version 3.2 adaptive eligible-signal update
+These sources do **not** prove profitable 1-minute OTC or binary-option signals:
 
-- Reduces the minimum from 24 to 20 closed candles (21 visible including the
-  still-forming candle), while continuing to exclude that forming candle.
-- Uses adaptive 9/15 directional confluence with a four-point lead. Short,
-  medium and long trend alignment, recent candle agreement, RSI, trend
-  efficiency and all v3.1 safety filters are still mandatory.
-- Requires two matching rendered frames instead of three, reducing current-chart
-  confirmation time without accepting a single-frame signal.
-- AUTO SCAN sorts readable payouts high-to-low, checks up to eight visible/open
-  assets, uses two frames per asset and returns an eligible 86+ setup immediately.
-  If no such asset exists it completes the scan and ranks the best valid result.
-- No signal is forced: choppy, low-volatility, shock, trend-conflict,
-  overextended, late-entry or oversized-candle setups remain WAIT.
-- This is legal on-device visual technical analysis, not an exploit, hidden
-  Quotex API, credential reader, auto-trader or guaranteed-profit system.
+- [Quotex indicator and market-condition guide](https://blog.qxbroker.com/updates/how-to-choose-the-right-indicator-for-trading-on-quotex/)
+- [Quotex Rules of Trading Operations](https://qxbroker.com/documents/en/Rules_of_Trading_operations_QTX.pdf)
+- [Moskowitz, Ooi and Pedersen — Time Series Momentum](https://w4.stern.nyu.edu/facdir/lpederse/papers/TimeSeriesMomentum.pdf)
+- [Bailey et al. — The Probability of Backtest Overfitting](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2326253)
 
-## Version 3.3 per-asset multi-horizon update
+There is no verified secret “foreign high-performance Quotex strategy” that can honestly be copied into an APK. This engine is a transparent rules-based experiment, not a hidden API, exploit, cloud AI model, or guaranteed-profit system.
 
-- Each currency now owns a separate confirmation state. Manually or
-  automatically changing the asset clears the prior asset's UP/DOWN streak, so
-  two different charts can never be combined into one signal.
-- Current-chart analysis waits for the visible asset name before capturing its
-  pixels. Every asset is therefore scored only from its own rendered candles.
-- Restores 2/3/5-minute DEMO suggestions with distinct rules: 2 minutes is the
-  normal valid setup; 3 minutes needs at least 28 closed candles plus stronger
-  directional lead, long slope and trend efficiency; 5 minutes needs at least
-  36 closed candles and still stricter persistence. Setup strength alone cannot
-  produce a long expiry.
-- Keeps the legal confluence stack: multi-scale regression trend, EMA gap,
-  MACD impulse, RSI, momentum, candle balance, breakout, range position and
-  trend efficiency, followed by the existing safety WAIT filters.
-- Public research on technical indicators is mixed and does not establish a
-  secret foreign strategy or guaranteed performance. This build remains an
-  experimental visual DEMO assistant and never places a trade.
+## Platform and risk limits
 
-## What it does
+Quotex's current rules prohibit automated mechanisms that perform operations without the client's direct participation. This app therefore never submits a trade or touches the amount/direction controls. The user remains responsible for checking current platform terms and local law.
 
-- Shows the full official Quotex demo page inside the Android app, including
-  its own asset/currency selector when the platform makes it available.
-- Reads visible candle pixels every 2.5 seconds.
-- Uses symmetric trend slope, EMA proxy, MACD impulse, RSI proxy, candle momentum,
-  breakout, trend-efficiency, range-position and market-safety filters.
-- Shows **UP**, **DOWN**, or **WAIT** only when strict confluence is present.
-- Keeps captured frames on the device and does not collect credentials.
-- Never places a trade or clicks Quotex controls.
+Binary options can lose the full stake. Setup score is **not win probability**. Keep this tool on a demo account and record at least 100 forward demo observations before evaluating any profile. Do not use real money based on this display.
 
-## Important
+## Deterministic engine test
 
-This is an experimental **demo-account learning tool**, not financial advice. It cannot guarantee 8/10 wins or any profit. OTC prices are proprietary and no external Binance/forex feed is used. Test at least 100 demo observations and record every signal before judging the model. Do not use real money based on the displayed setup strength.
-
-## Engine test
-
-The GitHub workflow runs the plain-Java symmetry test before building the APK.
-Locally, with a JDK installed:
+With JDK 17:
 
 ```bash
 mkdir -p build/engine-test
 javac -d build/engine-test \
-  app/src/main/java/com/qx/strictsignal/SignalEngine.java \
-  engine-test/com/qx/strictsignal/SignalEngineSelfTest.java
-java -cp build/engine-test com.qx.strictsignal.SignalEngineSelfTest
+  app/src/main/java/com/qx/adaptiveedge/SignalEngine.java \
+  engine-test/com/qx/adaptiveedge/SignalEngineSelfTest.java
+java -cp build/engine-test com.qx.adaptiveedge.SignalEngineSelfTest
 ```
 
-## APK
+The test covers:
 
-Open the latest successful **Actions** run and download the `QX-Native-Demo-APK-v2` artifact. Unzip it, then install `app-debug.apk` on Android 8.0 or newer. Uninstall the old APK first if Android reports a signature conflict.
+- mirrored trend UP/DOWN scoring;
+- trend, breakout and range-regime selection;
+- flat/choppy WAIT and volatility-shock WAIT;
+- symmetric range reversals;
+- distinct 2, 3 and 5-minute horizon gates.
+
+## Build the APK
+
+GitHub Actions runs the engine test before the Android build. Open the latest successful **Build QX Adaptive Demo APK** run and download `QX-Adaptive-Demo-APK-v1`. Unzip it and install `app-debug.apk` on Android 8.0 or newer.
+
+Because the application ID is new, installing this APK does not update or overwrite `QX Native Demo Signal`.

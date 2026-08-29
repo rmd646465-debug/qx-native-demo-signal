@@ -8,9 +8,9 @@
         android:usesCleartextTraffic="false"
         android:networkSecurityConfig="@xml/network_security_config"
         android:icon="@drawable/ic_launcher"
-        android:label="QX Native Demo Signal"
+        android:label="QX Adaptive Demo Signal"
         android:supportsRtl="true"
-        android:theme="@style/Theme.QXSignal">
+        android:theme="@style/Theme.QXAdaptive">
         <activity
             android:name=".MainActivity"
             android:configChanges="keyboardHidden|orientation|screenSize"

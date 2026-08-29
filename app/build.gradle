@@ -3,15 +3,15 @@ plugins {
 }
 
 android {
-    namespace "com.qx.strictsignal"
+    namespace "com.qx.adaptiveedge"
     compileSdk 35
 
     defaultConfig {
-        applicationId "com.qx.strictsignal"
+        applicationId "com.qx.adaptiveedge"
         minSdk 26
         targetSdk 35
-        versionCode 14
-        versionName "3.3.0-per-asset-multi-horizon"
+        versionCode 1
+        versionName "1.0.0-adaptive-regime"
     }
 
     buildTypes {

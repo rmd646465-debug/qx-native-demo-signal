@@ -1,9 +1,9 @@
-name: Build Android Demo APK
+name: Build QX Adaptive Demo APK
 
 on:
   workflow_dispatch:
   push:
-    branches: ["main"]
+    branches: ["main", "adaptive-build-v1"]
 
 permissions:
   contents: read
@@ -37,9 +37,9 @@ jobs:
         run: |
           mkdir -p build/engine-test
           javac -d build/engine-test \
-            app/src/main/java/com/qx/strictsignal/SignalEngine.java \
-            engine-test/com/qx/strictsignal/SignalEngineSelfTest.java
-          java -cp build/engine-test com.qx.strictsignal.SignalEngineSelfTest
+            app/src/main/java/com/qx/adaptiveedge/SignalEngine.java \
+            engine-test/com/qx/adaptiveedge/SignalEngineSelfTest.java
+          java -cp build/engine-test com.qx.adaptiveedge.SignalEngineSelfTest
 
       - name: Build debug APK
         run: gradle --no-daemon :app:assembleDebug
@@ -47,7 +47,7 @@ jobs:
       - name: Upload installable APK
         uses: actions/upload-artifact@v4
         with:
-          name: QX-Native-Demo-APK-v2
+          name: QX-Adaptive-Demo-APK-v1
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30
