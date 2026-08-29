@@ -2,8 +2,24 @@
 
 Android analysis-only chart reader that displays `UP`, `DOWN`, or `WAIT` from
 the currently rendered Quotex demo candlestick chart. Version
-`1.3.0-daily-target-demo` keeps the separate application ID
+`1.3.1-continuous-smart-scan` keeps the separate application ID
 `com.qx.adaptiveedge` and never presses a trade button or places an order.
+
+## Continuous Smart Scan in v1.3.1
+
+`SMART SCAN ON` is now the default after the official demo page becomes ready.
+At every new one-minute candle close it searches up to four currently visible
+charts whose payout is at least 82%, taking three stable screen reads per chart.
+If no complete setup exists, it automatically re-arms for the next close instead
+of stopping and requiring another button tap. The normal close window is widened
+from 8 to 15 seconds so slower Android/WebView rendering does not miss the check;
+the 18-second fresh-entry cutoff still blocks late signals.
+
+Only one signal can be handled at a time. Smart Scan pauses through its 2/3/5
+minute expiry and requires `MARK WIN` or `MARK LOSS` before searching again.
+Turning Smart Scan off returns to current-chart-only closed-candle checks. This
+change improves scan coverage and status visibility; it does not lower the
+price-action thresholds or force a directional result.
 
 ## Daily $5-$7 demo target controller in v1.3.0
 
@@ -144,9 +160,10 @@ on the basis of this app.
 ## Build and deterministic checks
 
 GitHub Actions uses Java 17 and Android API 35, runs the pure-Java engine test,
-builds the debug APK and uploads `QX-Daily-Target-Demo-APK-v5`.
+builds the debug APK and uploads `QX-Daily-Target-Smart-Scan-APK-v6`.
 
 The deterministic test verifies mirrored UP/DOWN scoring, contextual 2/3/5
 minute expiry selection, rejection of raw trend/flow, late-entry protection,
 flat/abnormal-volatility `WAIT` filters, the 30-closed-candle minimum, exact
-$2/82% P/L math, target stop, loss stop and ten-trade cap.
+$2/82% P/L math, target stop, loss stop, ten-trade cap, 82% payout eligibility
+and continuous next-close scan timing.

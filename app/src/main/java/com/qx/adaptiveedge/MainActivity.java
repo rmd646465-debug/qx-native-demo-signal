@@ -57,10 +57,10 @@ public final class MainActivity extends Activity {
     private static final long CHART_WARMUP_MS = 1500L;
     private static final long CHART_REPAIR_DELAY_MS = 650L;
     private static final long STABILITY_FRAME_MS = 450L;
-    private static final long MINUTE_MS = 60_000L;
-    private static final long CLOSE_WINDOW_START_MS = 900L;
-    private static final long CLOSE_WINDOW_END_MS = 8_000L;
-    private static final long AUTO_SCAN_FRESH_END_MS = 18_000L;
+    private static final long MINUTE_MS = SmartScanPolicy.MINUTE_MS;
+    private static final long CLOSE_WINDOW_START_MS = SmartScanPolicy.CLOSE_WINDOW_START_MS;
+    private static final long AUTO_SCAN_FRESH_END_MS = SmartScanPolicy.FRESH_ENTRY_END_MS;
+    private static final long SMART_SCAN_START_DELAY_MS = 2_100L;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService analyzerExecutor = Executors.newSingleThreadExecutor();
@@ -78,6 +78,7 @@ public final class MainActivity extends Activity {
     private volatile boolean analysisBusy;
     private boolean stableSequenceActive;
     private boolean assetScanActive;
+    private boolean continuousScanEnabled = true;
     private boolean chartRepairBusy;
     private boolean chartRepairEscalated;
     private final List<String> assetQueue = new ArrayList<>();
@@ -90,17 +91,20 @@ public final class MainActivity extends Activity {
     private long assetScanMinute = -1L;
     private final Map<String, Long> analyzedMinuteByAsset = new HashMap<>();
     private final SignalLockBook<AnalysisResult> signalLocks = new SignalLockBook<>();
+    private SignalLockBook.Entry<AnalysisResult> lastIssuedSignal;
     private int demoWins;
     private int demoLosses;
     private DailyTargetSession dailySession = new DailyTargetSession();
     private String sessionDay = "";
     private boolean riskStopped;
 
+    private final Runnable smartScanStarter = this::beginAssetScan;
+
     private final Runnable scanLoop = new Runnable() {
         @Override public void run() {
             ensureCurrentDemoDay();
             if (scanning && pageReady && !analysisBusy && !stableSequenceActive
-                    && !assetScanActive) {
+                    && !assetScanActive && !continuousScanEnabled) {
                 refreshCurrentAssetName(MainActivity.this::runLiveCloseCycle);
             }
             mainHandler.postDelayed(this, SCAN_INTERVAL_MS);
@@ -113,6 +117,7 @@ public final class MainActivity extends Activity {
         loadDemoRecord();
         setContentView(buildUi());
         if (riskStopped) toggleButton.setText(sessionButtonLabel());
+        updateSmartScanButton();
         updateRecordView();
         configureWebView();
         loadStartUrl(0, true);
@@ -178,15 +183,29 @@ public final class MainActivity extends Activity {
             }
             scanning = !scanning;
             toggleButton.setText(scanning ? "PAUSE ANALYSIS" : "START ANALYSIS");
-            if (!scanning) showWait("Paused by user", "Analysis stopped • Chart remains live");
+            if (!scanning) {
+                disableSmartScan("Paused by user", "Analysis stopped • Chart remains live");
+            } else {
+                continuousScanEnabled = true;
+                updateSmartScanButton();
+                beginAssetScan();
+            }
         });
         controls.addView(toggleButton, new LinearLayout.LayoutParams(0, dp(46), 1f));
 
-        assetScanButton = button("AUTO SCAN", Color.rgb(113, 74, 181));
+        assetScanButton = button("SMART SCAN ON", Color.rgb(113, 74, 181));
         assetScanButton.setOnClickListener(v -> {
-            if (assetScanActive) {
-                stopAssetScan("Asset scan stopped", "Current chart analysis continues");
+            ensureCurrentDemoDay();
+            if (riskStopped) {
+                showDailySessionStop();
+            } else if (continuousScanEnabled) {
+                disableSmartScan("SMART SCAN OFF",
+                        "Current currency will still be checked at each candle close");
             } else {
+                continuousScanEnabled = true;
+                scanning = true;
+                toggleButton.setText("PAUSE ANALYSIS");
+                updateSmartScanButton();
                 beginAssetScan();
             }
         });
@@ -356,9 +375,13 @@ public final class MainActivity extends Activity {
         failedMainFrameUrl = "";
         connectionView.setText("LIVE PAGE");
         connectionView.setTextColor(Color.rgb(80, 230, 169));
-        detailView.setText("3 stable reads • closed-candle gate • per-currency lock");
+        detailView.setText("SMART SCAN ON • 82%+ ASSETS • ONE ACTIVE SIGNAL");
         refreshCurrentAssetName(null);
         mainHandler.postDelayed(() -> repairChartView(false), CHART_REPAIR_DELAY_MS);
+        if (continuousScanEnabled && scanning && !riskStopped) {
+            mainHandler.removeCallbacks(smartScanStarter);
+            mainHandler.postDelayed(smartScanStarter, SMART_SCAN_START_DELAY_MS);
+        }
     }
 
     private void reloadOfficialChart() {
@@ -533,7 +556,8 @@ public final class MainActivity extends Activity {
                 + "const pm=t.match(/(\\d{2,3})\\s*%/),p=pm?parseInt(pm[1],10):0;"
                 + "const name=pair+(t.includes('OTC')?' (OTC)':'');const old=map.get(pair);"
                 + "if(!old||p>old.payout||(name.includes('OTC')&&!old.name.includes('OTC')))map.set(pair,{name:name,payout:p});}"
-                + "return Array.from(map.values()).filter(x=>x.payout===0||x.payout>=85)"
+                + "return Array.from(map.values()).filter(x=>x.payout===0||x.payout>="
+                + SmartScanPolicy.MIN_PAYOUT_PERCENT + ")"
                 + ".sort((a,b)=>b.payout-a.payout).map(x=>x.name).slice(0,4);})()";
     }
 
@@ -601,14 +625,11 @@ public final class MainActivity extends Activity {
     }
 
     private boolean isCloseWindow(long now) {
-        long position = now % MINUTE_MS;
-        return position >= CLOSE_WINDOW_START_MS && position <= CLOSE_WINDOW_END_MS;
+        return SmartScanPolicy.isCloseWindow(now);
     }
 
     private long delayToCloseWindow(long now) {
-        long position = now % MINUTE_MS;
-        if (position < CLOSE_WINDOW_START_MS) return CLOSE_WINDOW_START_MS - position;
-        return MINUTE_MS - position + CLOSE_WINDOW_START_MS;
+        return SmartScanPolicy.delayToCloseWindow(now);
     }
 
     private boolean isAutoScanFresh(long now) {
@@ -618,19 +639,32 @@ public final class MainActivity extends Activity {
 
     private void beginAssetScan() {
         ensureCurrentDemoDay();
+        mainHandler.removeCallbacks(smartScanStarter);
+        if (!continuousScanEnabled || !scanning || assetScanActive) return;
         if (!pageReady || webView == null) {
-            showWait("Live demo not ready", "Open DEMO chart, then tap AUTO SCAN");
+            showWait("Live demo not ready", "SMART SCAN starts when LIVE PAGE is ready");
             return;
         }
         if (riskStopped) {
             showDailySessionStop();
             return;
         }
+        if (lastIssuedSignal != null && !lastIssuedSignal.rated) {
+            long now = System.currentTimeMillis();
+            if (now < lastIssuedSignal.expiresAt) {
+                renderLockedSignal(lastIssuedSignal, now);
+            } else {
+                showWait("MARK PREVIOUS RESULT",
+                        lastIssuedSignal.displayAsset
+                                + " expired • tap MARK WIN or MARK LOSS to resume SMART SCAN");
+            }
+            return;
+        }
         assetScanActive = true;
         assetQueue.clear();
         assetScanResults.clear();
         assetScanIndex = 0;
-        assetScanButton.setText("STOP SCAN");
+        updateSmartScanButton();
         armAssetScanAtClose();
     }
 
@@ -638,14 +672,14 @@ public final class MainActivity extends Activity {
         if (!assetScanActive) return;
         long now = System.currentTimeMillis();
         if (!isCloseWindow(now)) {
-            showWait("AUTO SCAN ARMED",
-                    "It starts just after the next 1-minute candle closes");
+            showWait("SMART SCAN ARMED",
+                    "Automatic search starts just after the next 1-minute candle closes");
             mainHandler.postDelayed(this::armAssetScanAtClose,
                     Math.max(100L, delayToCloseWindow(now)));
             return;
         }
         assetScanMinute = now / MINUTE_MS;
-        showWait("Opening currency list", "Up to 4 high-payout charts • 3 reads per chart");
+        showWait("Opening currency list", "Up to 4 payout ≥82% charts • 3 reads per chart");
         webView.evaluateJavascript(openAssetListScript(), ignored ->
                 mainHandler.postDelayed(this::collectAssetQueue, 900L));
     }
@@ -676,7 +710,7 @@ public final class MainActivity extends Activity {
         if (!isAutoScanFresh(System.currentTimeMillis())) {
             if (assetScanResults.isEmpty()) {
                 stopAssetScan("ENTRY WINDOW MISSED",
-                        "No late signal was forced • arm AUTO SCAN again");
+                        "No late signal was forced • SMART SCAN will retry next candle");
             } else {
                 finishAssetScan();
             }
@@ -728,7 +762,7 @@ public final class MainActivity extends Activity {
             if (!"WAIT".equals(candidate.direction) && candidate.strength >= 80) {
                 assetScanActive = false;
                 assetScanMinute = -1L;
-                assetScanButton.setText("AUTO SCAN");
+                updateSmartScanButton();
                 currentAssetName = asset;
                 acceptStableResult(candidate);
                 openThenSelectAsset(asset, ignored -> { });
@@ -753,7 +787,7 @@ public final class MainActivity extends Activity {
             }
         }
         assetScanActive = false;
-        assetScanButton.setText("AUTO SCAN");
+        updateSmartScanButton();
         boolean fresh = isAutoScanFresh(System.currentTimeMillis());
         assetScanMinute = -1L;
         if (best == null) {
@@ -767,6 +801,7 @@ public final class MainActivity extends Activity {
                         "SCAN COMPLETE", 0,
                         "All scanned charts remained WAIT • no forced signal"));
             }
+            scheduleNextSmartScan();
             return;
         }
         AssetScanResult winner = best;
@@ -777,6 +812,7 @@ public final class MainActivity extends Activity {
             renderResult(AnalysisResult.waiting("ENTRY WINDOW MISSED",
                     winner.result.candles, winner.result.flowBias, "CLOSE GATE", 0,
                     "Scan finished too late • no directional signal issued"));
+            scheduleNextSmartScan();
         }
         openThenSelectAsset(winner.asset, ignored -> { });
     }
@@ -786,8 +822,52 @@ public final class MainActivity extends Activity {
         assetQueue.clear();
         assetScanResults.clear();
         assetScanMinute = -1L;
-        assetScanButton.setText("AUTO SCAN");
+        updateSmartScanButton();
         showWait(status, detail);
+        scheduleNextSmartScan();
+    }
+
+    private void scheduleNextSmartScan() {
+        if (!continuousScanEnabled || !scanning || riskStopped || !pageReady) return;
+        mainHandler.removeCallbacks(smartScanStarter);
+        long now = System.currentTimeMillis();
+        long delay = SmartScanPolicy.delayToNextClose(now);
+        mainHandler.postDelayed(smartScanStarter, Math.max(500L, delay));
+        if (waitView != null) {
+            waitView.setText("SMART SCAN ON • NEXT CANDLE AUTO-CHECK");
+            waitView.setTextColor(Color.rgb(245, 179, 66));
+        }
+    }
+
+    private void holdSmartScanForSignal(SignalLockBook.Entry<AnalysisResult> signal) {
+        lastIssuedSignal = signal;
+        mainHandler.removeCallbacks(smartScanStarter);
+        long delay = Math.max(250L,
+                signal.expiresAt - System.currentTimeMillis() + 250L);
+        mainHandler.postDelayed(() -> {
+            if (!continuousScanEnabled || riskStopped || signal.rated) return;
+            showWait("MARK PREVIOUS RESULT",
+                    signal.displayAsset
+                            + " expired • tap MARK WIN or MARK LOSS to resume SMART SCAN");
+        }, delay);
+    }
+
+    private void disableSmartScan(String status, String detail) {
+        continuousScanEnabled = false;
+        assetScanActive = false;
+        assetScanMinute = -1L;
+        assetQueue.clear();
+        assetScanResults.clear();
+        mainHandler.removeCallbacks(smartScanStarter);
+        updateSmartScanButton();
+        showWait(status, detail);
+    }
+
+    private void updateSmartScanButton() {
+        if (assetScanButton == null) return;
+        if (riskStopped) assetScanButton.setText("DAILY STOP");
+        else assetScanButton.setText(continuousScanEnabled
+                ? "SMART SCAN ON" : "SMART SCAN OFF");
     }
 
     private void captureStableAnalysis(Consumer<AnalysisResult> receiver) {
@@ -918,12 +998,23 @@ public final class MainActivity extends Activity {
             return;
         }
         long now = System.currentTimeMillis();
+        if (lastIssuedSignal != null && !lastIssuedSignal.rated) {
+            if (now < lastIssuedSignal.expiresAt) {
+                renderLockedSignal(lastIssuedSignal, now);
+            } else {
+                showWait("MARK PREVIOUS RESULT",
+                        lastIssuedSignal.displayAsset
+                                + " expired • mark its result before a new signal");
+            }
+            return;
+        }
         SignalLockBook.Entry<AnalysisResult> active = activeSignal(currentAssetName, now);
         if (active == null) {
             String key = assetKey(currentAssetName);
             active = signalLocks.issueOrKeep(key, currentAssetName, result, now,
                     now + result.expiryMinutes * MINUTE_MS);
         }
+        holdSmartScanForSignal(active);
         renderLockedSignal(active, now);
     }
 
@@ -997,6 +1088,13 @@ public final class MainActivity extends Activity {
                     || "DEMO TARGET REACHED".equals(result.status)
                     || "DAILY STOP LOCKED".equals(result.status)) {
                 waitView.setText("DAILY HARD STOP • NO MORE SIGNALS TODAY");
+            } else if ("MARK PREVIOUS RESULT".equals(result.status)) {
+                waitView.setText("MARK WIN/LOSS TO CONTINUE SMART SCAN");
+            } else if ("SMART SCAN ARMED".equals(result.status)) {
+                waitView.setText("NEXT 1-MIN CANDLE CLOSE • AUTOMATIC SEARCH");
+            } else if ("SMART SCAN OFF".equals(result.status)
+                    || "Paused by user".equals(result.status)) {
+                waitView.setText("NO AUTOMATIC SEARCH WHILE PAUSED/OFF");
             } else {
                 waitView.setText("NO VERIFIED EDGE • WAIT OR TRY ANOTHER CURRENCY");
             }
@@ -1084,8 +1182,9 @@ public final class MainActivity extends Activity {
             showDailySessionStop();
             return;
         }
-        SignalLockBook.Entry<AnalysisResult> signal = signalLocks.latest(
-                assetKey(currentAssetName));
+        SignalLockBook.Entry<AnalysisResult> signal = lastIssuedSignal != null
+                && !lastIssuedSignal.rated ? lastIssuedSignal
+                : signalLocks.latest(assetKey(currentAssetName));
         if (signal == null) {
             showWait("NO SIGNAL TO MARK", "A verified locked signal is required first");
             return;
@@ -1112,9 +1211,12 @@ public final class MainActivity extends Activity {
         updateRecordView();
         if (riskStopped) {
             scanning = false;
+            continuousScanEnabled = false;
+            mainHandler.removeCallbacks(smartScanStarter);
             toggleButton.setText(sessionButtonLabel());
             if (assetScanActive) stopAssetScan("DAILY SESSION STOP",
                     dailySession.stopDetail());
+            updateSmartScanButton();
             showDailySessionStop();
         } else {
             showWait(win ? "WIN RECORDED" : "LOSS RECORDED",
@@ -1122,6 +1224,7 @@ public final class MainActivity extends Activity {
                             + " • today "
                             + DailyTargetSession.formatMoney(dailySession.profitCents())
                             + " • " + dailySession.trades() + "/10 trades");
+            scheduleNextSmartScan();
         }
     }
 
@@ -1137,20 +1240,24 @@ public final class MainActivity extends Activity {
         assetScanMinute = -1L;
         assetQueue.clear();
         assetScanResults.clear();
-        assetScanButton.setText("AUTO SCAN");
+        mainHandler.removeCallbacks(smartScanStarter);
         demoWins = 0;
         demoLosses = 0;
         dailySession = new DailyTargetSession();
         sessionDay = currentDayKey();
         riskStopped = false;
         scanning = true;
+        continuousScanEnabled = true;
+        lastIssuedSignal = null;
         signalLocks.clear();
         analyzedMinuteByAsset.clear();
         saveDemoRecord();
         updateRecordView();
         toggleButton.setText("PAUSE ANALYSIS");
+        updateSmartScanButton();
         showWait("DEMO LOG RESET",
                 "$2 @82% session restarted • target +$5 • stop -$4 / two losses");
+        if (pageReady) mainHandler.postDelayed(smartScanStarter, 700L);
     }
 
     private void ensureCurrentDemoDay() {
@@ -1160,13 +1267,21 @@ public final class MainActivity extends Activity {
         sessionDay = today;
         dailySession = new DailyTargetSession();
         riskStopped = false;
+        lastIssuedSignal = null;
         signalLocks.clear();
         analyzedMinuteByAsset.clear();
-        if (wasStopped) scanning = true;
+        if (wasStopped) {
+            scanning = true;
+            continuousScanEnabled = true;
+        }
         saveDemoRecord();
         updateRecordView();
         if (toggleButton != null) {
             toggleButton.setText(scanning ? "PAUSE ANALYSIS" : "START ANALYSIS");
+        }
+        updateSmartScanButton();
+        if (pageReady && continuousScanEnabled && scanning) {
+            mainHandler.postDelayed(smartScanStarter, 700L);
         }
     }
 
@@ -1180,6 +1295,7 @@ public final class MainActivity extends Activity {
     }
 
     private void showDailySessionStop() {
+        updateSmartScanButton();
         String status = dailySession.stopReason()
                 == DailyTargetSession.StopReason.TARGET_REACHED
                 ? "DEMO TARGET REACHED" : "DAILY SESSION STOP";
@@ -1234,6 +1350,7 @@ public final class MainActivity extends Activity {
 
     @Override protected void onDestroy() {
         mainHandler.removeCallbacks(scanLoop);
+        mainHandler.removeCallbacks(smartScanStarter);
         analyzerExecutor.shutdownNow();
         CookieManager.getInstance().flush();
         if (webView != null) webView.destroy();

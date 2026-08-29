@@ -1,14 +1,27 @@
-QX DAILY TARGET DEMO v1.3 — বাংলা সারসংক্ষেপ
+QX DAILY TARGET DEMO v1.3.1 — বাংলা সারসংক্ষেপ
 ================================================
 
 App ID: com.qx.adaptiveedge
-Version: 1.3.0-daily-target-demo (versionCode 5)
-Build artifact: QX-Daily-Target-Demo-APK-v5
+Version: 1.3.1-continuous-smart-scan (versionCode 6)
+Build artifact: QX-Daily-Target-Smart-Scan-APK-v6
 
 সতর্কতা
 --------
 এটি Quotex DEMO chart-এর analysis-only app। এটি কোনো trade button চাপবে না,
 order করবে না এবং লাভ বা win rate নিশ্চিত করে না। v1.1 আর ব্যবহার করবেন না।
+
+v1.3.1 continuous SMART SCAN
+----------------------------
+- Official DEMO page ready হলে SMART SCAN নিজে ON হবে।
+- প্রতি নতুন 1-minute candle close-এ 82% বা বেশি payout-এর সর্বোচ্চ 4টি
+  দৃশ্যমান currency chart তিনবার করে পড়বে।
+- কোনো complete setup না পেলে button আবার চাপতে হবে না; পরের candle close-এ
+  নিজে আবার scan করবে।
+- ধীর Android/WebView যেন scan miss না করে, normal check window 8 second থেকে
+  15 second করা হয়েছে; 18 second-এর পরে late signal এখনো reject হবে।
+- একই সময়ে শুধু একটি active signal থাকবে। 2/3/5-minute expiry শেষে MARK WIN
+  অথবা MARK LOSS না করা পর্যন্ত পরের scan শুরু হবে না।
+- Signal rule দুর্বল করা হয়নি এবং random/forced UP-DOWN যোগ করা হয়নি।
 
 ভিডিওতে যে bug নিশ্চিত হয়েছে
 ----------------------------
@@ -90,11 +103,12 @@ Signal panel-এ WHY UP/DOWN দেখাবে। সেখানে setup-এ�
 DOWN point, closed-candle সংখ্যা এবং 3/3 STABLE লেখা থাকবে। এটি app কী দেখে
 signal দিয়েছে তার audit explanation; win নিশ্চিত হওয়ার প্রমাণ নয়।
 
-AUTO SCAN
----------
-AUTO SCAN tap করলে পরের 1-minute candle close-এর জন্য arm হবে। সর্বোচ্চ 4টি
-দৃশ্যমান high-payout currency তিনবার করে পড়বে। Fresh-entry window শেষ হয়ে গেলে
-late signal না দিয়ে WAIT দেখাবে। কোনো trade control স্পর্শ করবে না।
+SMART SCAN
+----------
+SMART SCAN default ON থাকবে। প্রতি 1-minute candle close-এ সর্বোচ্চ 4টি
+দৃশ্যমান 82%+ payout currency তিনবার করে পড়বে। Fresh-entry window শেষ হয়ে গেলে
+late signal না দিয়ে পরের candle-এ আবার চেষ্টা করবে। কোনো trade control স্পর্শ
+করবে না।
 
 DEMO result record
 ------------------

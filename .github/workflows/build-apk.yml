@@ -41,6 +41,7 @@ jobs:
             app/src/main/java/com/qx/adaptiveedge/SignalStability.java \
             app/src/main/java/com/qx/adaptiveedge/SignalLockBook.java \
             app/src/main/java/com/qx/adaptiveedge/DailyTargetSession.java \
+            app/src/main/java/com/qx/adaptiveedge/SmartScanPolicy.java \
             engine-test/com/qx/adaptiveedge/SignalEngineSelfTest.java
           java -cp build/engine-test com.qx.adaptiveedge.SignalEngineSelfTest
 
@@ -50,7 +51,7 @@ jobs:
       - name: Upload installable APK
         uses: actions/upload-artifact@v4
         with:
-          name: QX-Daily-Target-Demo-APK-v5
+          name: QX-Daily-Target-Smart-Scan-APK-v6
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30

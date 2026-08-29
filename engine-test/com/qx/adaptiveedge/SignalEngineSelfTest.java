@@ -242,6 +242,28 @@ public final class SignalEngineSelfTest {
                 "money formatting must be exact");
     }
 
+    private static void smartScanPolicyChecks() {
+        require(SmartScanPolicy.eligiblePayout(82),
+                "82% payout must be eligible for the target scan");
+        require(SmartScanPolicy.eligiblePayout(91)
+                        && SmartScanPolicy.eligiblePayout(0),
+                "higher and unknown visible payout entries may be scanned");
+        require(!SmartScanPolicy.eligiblePayout(81),
+                "payout below 82% must be rejected");
+        require(SmartScanPolicy.isCloseWindow(900L)
+                        && SmartScanPolicy.isCloseWindow(15_000L),
+                "the expanded closed-candle window boundaries must be included");
+        require(!SmartScanPolicy.isCloseWindow(899L)
+                        && !SmartScanPolicy.isCloseWindow(15_001L),
+                "outside-window reads must remain blocked");
+        require(SmartScanPolicy.delayToCloseWindow(400L) == 500L,
+                "pre-close timing must arm the current minute");
+        require(SmartScanPolicy.delayToCloseWindow(20_000L) == 40_900L,
+                "late timing must arm the next minute");
+        require(SmartScanPolicy.delayToNextClose(10_000L) == 50_900L,
+                "continuous scan must never repeat the same closed candle");
+    }
+
     public static void main(String[] args) {
         List<SignalEngine.CandlePoint> sweep = sweepUp();
         List<SignalEngine.CandlePoint> retest = retestUp();
@@ -302,8 +324,9 @@ public final class SignalEngineSelfTest {
         require(rejectedShortHistory, "fewer than 30 closed candles must be rejected");
         stabilityAndLockChecks();
         dailyTargetChecks();
+        smartScanPolicyChecks();
 
-        System.out.println("PASS: engine, stability, expiry lock, daily target and safety");
+        System.out.println("PASS: engine, stability, expiry lock, daily target, smart scan and safety");
         System.out.println("SWEEP " + sweepDecision.detail);
         System.out.println("RETEST " + retestDecision.detail);
         System.out.println("PULLBACK 2/3/5 " + shortDecision.expiryMinutes + "/"
