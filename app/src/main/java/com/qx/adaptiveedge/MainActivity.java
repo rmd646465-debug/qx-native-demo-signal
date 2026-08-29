@@ -55,6 +55,7 @@ public final class MainActivity extends Activity {
     };
     private static final long SCAN_INTERVAL_MS = 1000L;
     private static final long CHART_WARMUP_MS = 1500L;
+    private static final long CHART_REPAIR_DELAY_MS = 650L;
     private static final long STABILITY_FRAME_MS = 450L;
     private static final long MINUTE_MS = 60_000L;
     private static final long CLOSE_WINDOW_START_MS = 900L;
@@ -78,6 +79,8 @@ public final class MainActivity extends Activity {
     private volatile boolean analysisBusy;
     private boolean stableSequenceActive;
     private boolean assetScanActive;
+    private boolean chartRepairBusy;
+    private boolean chartRepairEscalated;
     private final List<String> assetQueue = new ArrayList<>();
     private final List<AssetScanResult> assetScanResults = new ArrayList<>();
     private int assetScanIndex;
@@ -189,13 +192,14 @@ public final class MainActivity extends Activity {
         scanParams.setMarginStart(dp(6));
         controls.addView(assetScanButton, scanParams);
 
-        Button reload = button("RELOAD CHART", Color.rgb(33, 97, 156));
+        Button reload = button("FIX CHART", Color.rgb(33, 97, 156));
         reload.setOnClickListener(v -> {
-            pageReady = false;
-            connectionView.setText("RELOADING");
-            String visibleUrl = webView.getUrl();
-            if (isOfficialUrl(visibleUrl)) webView.reload();
-            else loadStartUrl(0, true);
+            chartRepairEscalated = false;
+            repairChartView(true);
+        });
+        reload.setOnLongClickListener(v -> {
+            reloadOfficialChart();
+            return true;
         });
         LinearLayout.LayoutParams reloadParams = new LinearLayout.LayoutParams(0, dp(46), 1f);
         reloadParams.setMarginStart(dp(6));
@@ -253,6 +257,8 @@ public final class MainActivity extends Activity {
         settings.setAllowContentAccess(false);
         settings.setMediaPlaybackRequiresUserGesture(true);
         settings.setMixedContentMode(android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW);
+        settings.setOffscreenPreRaster(true);
+        webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
         // Keep Android's normal mobile WebView user-agent. Appending a custom
         // bot-style token can make an otherwise valid Quotex session fail.
         WebView.setWebContentsDebuggingEnabled(false);
@@ -263,6 +269,8 @@ public final class MainActivity extends Activity {
             @Override public void onPageStarted(WebView view, String url, Bitmap favicon) {
                 if (isOfficialUrl(url)) {
                     pageReady = false;
+                    chartRepairBusy = false;
+                    chartRepairEscalated = false;
                     connectionView.setText("LOADING");
                     connectionView.setTextColor(Color.rgb(245, 179, 66));
                 }
@@ -347,6 +355,18 @@ public final class MainActivity extends Activity {
         connectionView.setTextColor(Color.rgb(80, 230, 169));
         detailView.setText("3 stable reads • closed-candle gate • per-currency lock");
         refreshCurrentAssetName(null);
+        mainHandler.postDelayed(() -> repairChartView(false), CHART_REPAIR_DELAY_MS);
+    }
+
+    private void reloadOfficialChart() {
+        pageReady = false;
+        chartRepairBusy = false;
+        chartRepairEscalated = false;
+        connectionView.setText("RELOADING");
+        connectionView.setTextColor(Color.rgb(245, 179, 66));
+        String visibleUrl = webView.getUrl();
+        if (isOfficialUrl(visibleUrl)) webView.reload();
+        else loadStartUrl(0, true);
     }
 
     private void loadStartUrl(int index, boolean clearFailure) {
@@ -404,6 +424,89 @@ public final class MainActivity extends Activity {
                 + "if(t.length>80)continue;const m=t.match(re);if(!m)continue;"
                 + "const a=r.width*r.height;if(a<area){area=a;best=m[1]+'/'+m[2]+(t.includes('OTC')?' (OTC)':'');}}"
                 + "return best;})()";
+    }
+
+    private void repairChartView(boolean aggressive) {
+        if (webView == null || !pageReady || chartRepairBusy) {
+            if (aggressive) showWait("CHART NOT READY", "Wait for LIVE PAGE, then tap FIX CHART");
+            return;
+        }
+        chartRepairBusy = true;
+        if (aggressive) chartRepairEscalated = true;
+        connectionView.setText("CHART CHECK");
+        connectionView.setTextColor(Color.rgb(245, 179, 66));
+        if (aggressive) {
+            showWait("FIXING CANDLE VIEW",
+                    "Opening chart type • long-press FIX CHART only to reload page");
+        }
+        webView.evaluateJavascript(openCandlestickMenuScript(aggressive), ignored ->
+                mainHandler.postDelayed(() -> webView.evaluateJavascript(
+                        selectCandlestickScript(), value -> {
+                            chartRepairBusy = false;
+                            boolean selected = "true".equalsIgnoreCase(value);
+                            connectionView.setText(selected ? "CANDLE VIEW" : "LIVE PAGE");
+                            connectionView.setTextColor(Color.rgb(80, 230, 169));
+                            if (selected) {
+                                showWait("CANDLE VIEW READY",
+                                        "Candlestick mode selected • keep chart interval at 1 MIN");
+                            } else if (aggressive) {
+                                showWait("SELECT CANDLES ON CHART",
+                                        "Tap chart's … menu • Chart type • Candles");
+                            }
+                        }), CHART_REPAIR_DELAY_MS));
+    }
+
+    private String openCandlestickMenuScript(boolean aggressive) {
+        String fallback = aggressive
+                ? "let ds=bs.filter(e=>{const t=lab(e),r=e.getBoundingClientRect();"
+                + "return r.left<110&&r.top<innerHeight*.58&&r.width<100&&r.height<100"
+                + "&&(/^(\\.\\.\\.|\u2026|•••)$/.test(t)||e.querySelectorAll('circle').length>=3);});"
+                + "ds.sort((a,b)=>a.getBoundingClientRect().top-b.getBoundingClientRect().top);"
+                + "if(ds.length){clk(ds[0]);return 'dots';}"
+                : "";
+        return "(function(){const vis=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
+                + "return r.width>5&&r.height>5&&r.bottom>0&&r.top<innerHeight"
+                + "&&s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity||1)>.05;};"
+                + "const lab=e=>((e.innerText||e.textContent||'')+' '+(e.getAttribute('aria-label')||'')"
+                + "+' '+(e.getAttribute('title')||'')+' '+(e.getAttribute('data-tooltip')||''))"
+                + ".replace(/\\s+/g,' ').trim().toLowerCase();"
+                + "const clk=e=>{const t=e.closest('button,[role=button],[role=menuitem],li')||e;"
+                + "t.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window}));};"
+                + "for(const e of document.querySelectorAll('body *')){const t=lab(e);"
+                + "if(!vis(e)||t.length>100||!(/bonus/.test(t)&&/deposit/.test(t)))continue;"
+                + "let n=e;for(let i=0;i<4&&n.parentElement;i++){const p=n.parentElement;"
+                + "if(lab(p).length>180)break;n=p;}"
+                + "const cs=[...n.querySelectorAll('button,[role=button]')].filter(vis);"
+                + "if(cs.length){cs.sort((a,b)=>b.getBoundingClientRect().right-a.getBoundingClientRect().right);clk(cs[0]);}break;}"
+                + "document.querySelectorAll('canvas').forEach(c=>{c.style.visibility='visible';c.style.opacity='1';});"
+                + "window.dispatchEvent(new Event('resize'));"
+                + "let es=[...document.querySelectorAll('button,[role=menuitem],li,div,span')].filter(vis)"
+                + ".filter(e=>/^(candles?|candlesticks?|japanese candles?)$/.test(lab(e)));"
+                + "es.sort((a,b)=>a.getBoundingClientRect().width*a.getBoundingClientRect().height"
+                + "-b.getBoundingClientRect().width*b.getBoundingClientRect().height);"
+                + "if(es.length){clk(es[0]);return 'selected';}"
+                + "let bs=[...document.querySelectorAll('button,[role=button],[aria-label],[title]')].filter(vis);"
+                + "let cs=bs.filter(e=>{const t=lab(e);return !/(deposit|trade|up|down)/.test(t)"
+                + "&&(/chart.*(type|style)|(type|style).*chart|candlestick|^line$/.test(t));});"
+                + "cs.sort((a,b)=>a.getBoundingClientRect().width*a.getBoundingClientRect().height"
+                + "-b.getBoundingClientRect().width*b.getBoundingClientRect().height);"
+                + "if(cs.length){clk(cs[0]);return 'menu';}" + fallback
+                + "return 'layout';})()";
+    }
+
+    private String selectCandlestickScript() {
+        return "(function(){const vis=e=>{const r=e.getBoundingClientRect(),s=getComputedStyle(e);"
+                + "return r.width>5&&r.height>5&&r.bottom>0&&r.top<innerHeight"
+                + "&&s.display!=='none'&&s.visibility!=='hidden'&&Number(s.opacity||1)>.05;};"
+                + "const lab=e=>(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim().toLowerCase();"
+                + "let es=[...document.querySelectorAll('button,[role=button],[role=menuitem],li,div,span')]"
+                + ".filter(vis).filter(e=>/^(candles?|candlesticks?|japanese candles?)$/.test(lab(e)));"
+                + "es.sort((a,b)=>a.getBoundingClientRect().width*a.getBoundingClientRect().height"
+                + "-b.getBoundingClientRect().width*b.getBoundingClientRect().height);"
+                + "if(es.length){const t=es[0].closest('button,[role=button],[role=menuitem],li')||es[0];"
+                + "t.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window}));"
+                + "setTimeout(()=>window.dispatchEvent(new Event('resize')),100);return true;}"
+                + "window.dispatchEvent(new Event('resize'));return false;})()";
     }
 
     private String openAssetListScript() {
@@ -796,6 +899,11 @@ public final class MainActivity extends Activity {
 
     private void acceptStableResult(AnalysisResult result) {
         if ("WAIT".equals(result.direction)) {
+            if ("CANDLE CHART REQUIRED".equals(result.status)
+                    && !chartRepairEscalated && !chartRepairBusy) {
+                repairChartView(true);
+                return;
+            }
             renderResult(result);
             return;
         }
@@ -856,11 +964,23 @@ public final class MainActivity extends Activity {
         } else {
             strengthView.setText(currentAssetName + " • " + result.profile
                     + (result.readiness > 0 ? " • READY " + result.readiness + "/100" : ""));
-            detailView.setText("Detected " + result.candles + " candles • FLOW "
-                    + signed(result.flowBias) + " • " + result.detail);
+            if ("WAIT FOR NEXT CLOSED CANDLE".equals(result.status)) {
+                strengthView.setText(currentAssetName + " • NEXT CLOSED-CANDLE CHECK");
+                detailView.setText("Live demo page is open • candle detection has not run yet");
+            } else if ("CANDLE CHART REQUIRED".equals(result.status)) {
+                strengthView.setText(currentAssetName + " • CANDLE VIEW REQUIRED");
+                detailView.setText("Price page loaded, but red/green candlesticks are not visible");
+            } else if (result.candles > 0) {
+                detailView.setText("Detected " + result.candles + " candles • FLOW "
+                        + signed(result.flowBias) + " • " + result.detail);
+            } else {
+                detailView.setText(result.detail);
+            }
             waitView.setTextColor(Color.rgb(245, 179, 66));
             if ("WAIT FOR NEXT CLOSED CANDLE".equals(result.status)) {
                 waitView.setText("CLOSE GATE ACTIVE • NO MID-CANDLE REVERSAL");
+            } else if ("CANDLE CHART REQUIRED".equals(result.status)) {
+                waitView.setText("TAP FIX CHART • CHOOSE CANDLES IF MENU OPENS");
             } else if ("UNSTABLE CHART READ".equals(result.status)) {
                 waitView.setText("3 READS DISAGREED • NO SIGNAL");
             } else if ("RISK STOP".equals(result.status)) {
@@ -1096,9 +1216,13 @@ public final class MainActivity extends Activity {
                     : Bitmap.createScaledBitmap(source, targetWidth, targetHeight, true);
             try {
                 List<SignalEngine.CandlePoint> detected = extractCandles(bitmap);
+                if (detected.isEmpty()) {
+                    return AnalysisResult.waiting("CANDLE CHART REQUIRED", 0, 0,
+                            "Price line may be selected • switch chart type to Candles");
+                }
                 if (detected.size() < SignalEngine.MIN_CANDLES + 1) {
-                    return AnalysisResult.waiting("Chart not ready", detected.size(), 0,
-                            "Keep at least 31 red/green candles visible");
+                    return AnalysisResult.waiting("NEED MORE CANDLES", detected.size(), 0,
+                            "Zoom out slightly and keep at least 31 red/green candles visible");
                 }
 
                 // The rightmost candle is normally still forming. Excluding it

@@ -2,7 +2,7 @@
 
 Android analysis-only chart reader that displays `UP`, `DOWN`, or `WAIT` from
 the currently rendered Quotex demo candlestick chart. Version
-`1.2.0-stable-close` keeps the separate application ID
+`1.2.1-chart-repair` keeps the separate application ID
 `com.qx.adaptiveedge` and never presses a trade button or places an order.
 
 ## Why v1.1 was replaced
@@ -18,6 +18,22 @@ sample.
 Version 1.1 is deprecated. Fixing the display reversal does not create or prove
 a profitable strategy; v1.2 is built to reject unstable inputs and collect an
 honest demo record.
+
+## Chart visibility repair in v1.2.1
+
+The official demo page can remember a line-chart view or fail to repaint its
+canvas after the mobile WebView changes size. In that state the price line and
+axis are visible but red/green candles are missing. The app now explicitly
+enables hardware-accelerated WebView canvas rendering, closes the small deposit
+promo when possible, requests a chart relayout and tries to select the visible
+`Candles`/`Candlestick` chart option after page load.
+
+The former `RELOAD CHART` control is now `FIX CHART`. Tap it to run the stronger
+chart-menu repair. If Quotex changes its page labels and the menu remains open,
+manually choose `Chart type -> Candles`. Long-press `FIX CHART` only when a full
+official-page reload is needed. A close-gate status no longer falsely says
+`Detected 0 candles` before an actual frame check. A verified zero-candle frame
+instead says `CANDLE VIEW REQUIRED` and never produces a signal.
 
 ## Stable closed-candle gate
 
@@ -109,7 +125,7 @@ on the basis of this app.
 ## Build and deterministic checks
 
 GitHub Actions uses Java 17 and Android API 35, runs the pure-Java engine test,
-builds the debug APK and uploads `QX-Stable-Close-Demo-APK-v3`.
+builds the debug APK and uploads `QX-Stable-Close-Demo-APK-v4`.
 
 The deterministic test verifies mirrored UP/DOWN scoring, contextual 2/3/5
 minute expiry selection, rejection of raw trend/flow, late-entry protection,

@@ -2,8 +2,8 @@ QX STABLE CLOSE DEMO v1.2 — বাংলা সারসংক্ষেপ
 ================================================
 
 App ID: com.qx.adaptiveedge
-Version: 1.2.0-stable-close (versionCode 3)
-Build artifact: QX-Stable-Close-Demo-APK-v3
+Version: 1.2.1-chart-repair (versionCode 4)
+Build artifact: QX-Stable-Close-Demo-APK-v4
 
 সতর্কতা
 --------
@@ -33,6 +33,21 @@ v1.2-এর closed-candle নিয়ম
 7. setup score-এর পার্থক্য 5-এর বেশি বা flow bias-এর পার্থক্য 8-এর বেশি হলেও
    WAIT — UNSTABLE CHART READ দেখাবে।
 8. candle চলার মাঝখানে কোনো নতুন directional signal দেবে না।
+
+v1.2.1 chart visibility repair
+------------------------------
+Screenshot-এ official demo page, price line ও time axis দেখা গেলেও red/green
+candle layer ছিল না। Line-chart mode save থাকা বা WebView resize-এর পরে canvas
+repaint না হওয়া—দুই অবস্থার জন্য এই fix যোগ হয়েছে:
+
+- Hardware-accelerated WebView canvas স্পষ্টভাবে চালু।
+- Page load-এর পরে chart relayout এবং Candles/Candlestick option খোঁজে।
+- সম্ভব হলে deposit promo বন্ধ করে chart-এর জায়গা বাড়ায়।
+- RELOAD CHART button এখন FIX CHART। Tap করলে chart menu repair চালায়।
+- Quotex menu খুলে থাকলে Chart type → Candles নিজে select করতে হবে।
+- FIX CHART long-press করলে full official page reload হবে।
+- Closed-candle check হওয়ার আগেই ভুলভাবে Detected 0 candles আর বলবে না।
+- সত্যিই 0 candle পাওয়া গেলে CANDLE VIEW REQUIRED দেখাবে, signal দেবে না।
 
 কোন strategy signal দিতে পারবে
 ------------------------------
