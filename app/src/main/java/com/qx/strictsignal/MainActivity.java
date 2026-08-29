@@ -81,7 +81,7 @@ public final class MainActivity extends Activity {
     private final Runnable scanLoop = new Runnable() {
         @Override public void run() {
             if (scanning && pageReady && !analysisBusy && !assetScanActive) {
-                refreshCurrentAssetName(this::captureAndAnalyze);
+                refreshCurrentAssetName(MainActivity.this::captureAndAnalyze);
             }
             mainHandler.postDelayed(this, SCAN_INTERVAL_MS);
         }
