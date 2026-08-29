@@ -1,9 +1,28 @@
-# QX Stable Close Demo
+# QX Daily Target Demo
 
 Android analysis-only chart reader that displays `UP`, `DOWN`, or `WAIT` from
 the currently rendered Quotex demo candlestick chart. Version
-`1.2.1-chart-repair` keeps the separate application ID
+`1.3.0-daily-target-demo` keeps the separate application ID
 `com.qx.adaptiveedge` and never presses a trade button or places an order.
+
+## Daily $5-$7 demo target controller in v1.3.0
+
+The target controller assumes a fixed $2 demo stake and at least 82% displayed
+payout. Do not use the ledger when the selected chart shows less than 82%.
+A marked win adds $1.64 and a marked loss subtracts $2. It stops analysis and
+Auto Scan for the local calendar day as soon as any of these happens:
+
+- Demo P/L reaches at least +$5. Because each win adds $1.64 and recording
+  stops immediately, a clean four-win session closes at +$6.56, inside the
+  requested $5-$7 range.
+- Demo P/L reaches -$4 or two consecutive losses are marked.
+- Ten total demo results are marked without either earlier stop.
+
+The stopped session reopens automatically on the next local date. `RESET LOG`
+cannot bypass an active daily hard stop. The screen shows today's P/L, trades
+used, lifetime demo record, fixed-payout net result and progress toward a
+500-result audit sample. Results are still manually marked and are not
+independently verified.
 
 ## Why v1.1 was replaced
 
@@ -86,17 +105,17 @@ Auto Scan is armed for the next one-minute close, checks at most four visible
 high-payout currencies with three reads each, and refuses a directional result
 if the fresh-entry window has already passed. It never touches trade controls.
 
-## Demo result record and risk stop
+## Demo result record and daily hard stop
 
 `MARK WIN` and `MARK LOSS` become valid only after the displayed expiry ends.
 Each signal can be recorded once. The app stores total wins, losses, observed
-demo percentage and the current loss streak on-device. These are user-entered
-results, not independently verified statistics.
+demo percentage, fixed-payout P/L and the current local-day session on-device.
+These are user-entered results, not independently verified statistics.
 
-After three consecutive marked losses, live analysis and Auto Scan stop. `RESET
-LOG` clears the record and resumes demo testing. Do not use martingale or raise
-the amount after a loss. The app deliberately has no loss-recovery staking
-system because no next trade can be guaranteed to recover an earlier loss.
+Do not use martingale or raise the amount after a loss. The app deliberately has
+no loss-recovery staking system because no next trade can be guaranteed to
+recover an earlier loss. The target controller limits a demo experiment; it
+does not create a predictive edge or guarantee a daily profit.
 
 ## Evidence limits
 
@@ -125,8 +144,9 @@ on the basis of this app.
 ## Build and deterministic checks
 
 GitHub Actions uses Java 17 and Android API 35, runs the pure-Java engine test,
-builds the debug APK and uploads `QX-Stable-Close-Demo-APK-v4`.
+builds the debug APK and uploads `QX-Daily-Target-Demo-APK-v5`.
 
 The deterministic test verifies mirrored UP/DOWN scoring, contextual 2/3/5
 minute expiry selection, rejection of raw trend/flow, late-entry protection,
-flat/abnormal-volatility `WAIT` filters and the 30-closed-candle minimum.
+flat/abnormal-volatility `WAIT` filters, the 30-closed-candle minimum, exact
+$2/82% P/L math, target stop, loss stop and ten-trade cap.

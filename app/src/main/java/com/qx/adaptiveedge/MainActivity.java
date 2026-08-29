@@ -61,7 +61,6 @@ public final class MainActivity extends Activity {
     private static final long CLOSE_WINDOW_START_MS = 900L;
     private static final long CLOSE_WINDOW_END_MS = 8_000L;
     private static final long AUTO_SCAN_FRESH_END_MS = 18_000L;
-    private static final int LOSS_STOP_LIMIT = 3;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService analyzerExecutor = Executors.newSingleThreadExecutor();
@@ -93,11 +92,13 @@ public final class MainActivity extends Activity {
     private final SignalLockBook<AnalysisResult> signalLocks = new SignalLockBook<>();
     private int demoWins;
     private int demoLosses;
-    private int consecutiveLosses;
+    private DailyTargetSession dailySession = new DailyTargetSession();
+    private String sessionDay = "";
     private boolean riskStopped;
 
     private final Runnable scanLoop = new Runnable() {
         @Override public void run() {
+            ensureCurrentDemoDay();
             if (scanning && pageReady && !analysisBusy && !stableSequenceActive
                     && !assetScanActive) {
                 refreshCurrentAssetName(MainActivity.this::runLiveCloseCycle);
@@ -111,7 +112,7 @@ public final class MainActivity extends Activity {
         getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         loadDemoRecord();
         setContentView(buildUi());
-        if (riskStopped) toggleButton.setText("START ANALYSIS");
+        if (riskStopped) toggleButton.setText(sessionButtonLabel());
         updateRecordView();
         configureWebView();
         loadStartUrl(0, true);
@@ -128,7 +129,7 @@ public final class MainActivity extends Activity {
         header.setPadding(dp(14), dp(10), dp(10), dp(9));
         header.setBackgroundColor(Color.rgb(10, 18, 32));
 
-        TextView title = text("QX Stable Close Demo", 16, Color.WHITE, true);
+        TextView title = text("QX $5-$7 Target Demo", 16, Color.WHITE, true);
         header.addView(title, new LinearLayout.LayoutParams(0, dp(44), 1f));
         connectionView = text("CONNECTING", 10, Color.rgb(245, 179, 66), true);
         connectionView.setGravity(Gravity.CENTER);
@@ -168,10 +169,11 @@ public final class MainActivity extends Activity {
 
         toggleButton = button("PAUSE ANALYSIS", Color.rgb(11, 139, 91));
         toggleButton.setOnClickListener(v -> {
+            ensureCurrentDemoDay();
             if (riskStopped) {
                 scanning = false;
-                toggleButton.setText("START ANALYSIS");
-                showWait("RISK STOP", "Reset the demo log after 3 consecutive losses");
+                toggleButton.setText(sessionButtonLabel());
+                showDailySessionStop();
                 return;
             }
             scanning = !scanning;
@@ -228,13 +230,14 @@ public final class MainActivity extends Activity {
         resultControls.addView(resetLog, resetParams);
         root.addView(resultControls);
 
-        recordView = text("DEMO RECORD 0-0", 9, Color.rgb(171, 183, 201), true);
+        recordView = text("TODAY $0.00 / +$5.00", 9, Color.rgb(171, 183, 201), true);
         recordView.setGravity(Gravity.CENTER);
-        recordView.setPadding(dp(8), dp(1), dp(8), dp(5));
+        recordView.setMaxLines(2);
+        recordView.setPadding(dp(8), dp(2), dp(8), dp(5));
         recordView.setBackgroundColor(Color.rgb(10, 18, 32));
         root.addView(recordView);
 
-        TextView risk = text("SET CHART TO 1 MIN • WAIT MEANS NO TRADE • NO WIN GUARANTEE • NO AUTO-TRADE", 9, Color.rgb(255, 204, 111), true);
+        TextView risk = text("$2 DEMO • USE PAYOUT ≥82% • TARGET +$5 • STOP -$4/2 LOSSES • 10 MAX • NO GUARANTEE/AUTO-TRADE", 9, Color.rgb(255, 204, 111), true);
         risk.setGravity(Gravity.CENTER);
         risk.setPadding(dp(8), dp(6), dp(8), dp(7));
         root.addView(risk);
@@ -567,6 +570,7 @@ public final class MainActivity extends Activity {
     }
 
     private void runLiveCloseCycle() {
+        ensureCurrentDemoDay();
         long now = System.currentTimeMillis();
         SignalLockBook.Entry<AnalysisResult> active = activeSignal(currentAssetName, now);
         if (active != null) {
@@ -574,7 +578,7 @@ public final class MainActivity extends Activity {
             return;
         }
         if (riskStopped) {
-            showWait("RISK STOP", "3 consecutive demo losses • reset log before testing again");
+            showDailySessionStop();
             return;
         }
         if (!isCloseWindow(now)) {
@@ -613,12 +617,13 @@ public final class MainActivity extends Activity {
     }
 
     private void beginAssetScan() {
+        ensureCurrentDemoDay();
         if (!pageReady || webView == null) {
             showWait("Live demo not ready", "Open DEMO chart, then tap AUTO SCAN");
             return;
         }
         if (riskStopped) {
-            showWait("RISK STOP", "Reset the demo log before another scan");
+            showDailySessionStop();
             return;
         }
         assetScanActive = true;
@@ -898,6 +903,11 @@ public final class MainActivity extends Activity {
     }
 
     private void acceptStableResult(AnalysisResult result) {
+        ensureCurrentDemoDay();
+        if (riskStopped) {
+            showDailySessionStop();
+            return;
+        }
         if ("WAIT".equals(result.direction)) {
             if ("CANDLE CHART REQUIRED".equals(result.status)
                     && !chartRepairEscalated && !chartRepairBusy) {
@@ -983,8 +993,10 @@ public final class MainActivity extends Activity {
                 waitView.setText("TAP FIX CHART • CHOOSE CANDLES IF MENU OPENS");
             } else if ("UNSTABLE CHART READ".equals(result.status)) {
                 waitView.setText("3 READS DISAGREED • NO SIGNAL");
-            } else if ("RISK STOP".equals(result.status)) {
-                waitView.setText("RESET LOG TO RESUME DEMO TESTING");
+            } else if ("DAILY SESSION STOP".equals(result.status)
+                    || "DEMO TARGET REACHED".equals(result.status)
+                    || "DAILY STOP LOCKED".equals(result.status)) {
+                waitView.setText("DAILY HARD STOP • NO MORE SIGNALS TODAY");
             } else {
                 waitView.setText("NO VERIFIED EDGE • WAIT OR TRY ANOTHER CURRENCY");
             }
@@ -1015,16 +1027,31 @@ public final class MainActivity extends Activity {
                 "stable_close_demo_record", MODE_PRIVATE);
         demoWins = prefs.getInt("wins", 0);
         demoLosses = prefs.getInt("losses", 0);
-        consecutiveLosses = prefs.getInt("consecutive_losses", 0);
-        riskStopped = consecutiveLosses >= LOSS_STOP_LIMIT;
+        sessionDay = prefs.getString("daily_day", "");
+        String today = currentDayKey();
+        if (today.equals(sessionDay)) {
+            dailySession = new DailyTargetSession(
+                    prefs.getInt("daily_wins", 0),
+                    prefs.getInt("daily_losses", 0),
+                    prefs.getInt("daily_consecutive_losses", 0));
+        } else {
+            sessionDay = today;
+            dailySession = new DailyTargetSession();
+        }
+        riskStopped = dailySession.isStopped();
         if (riskStopped) scanning = false;
+        saveDemoRecord();
     }
 
     private void saveDemoRecord() {
         getSharedPreferences("stable_close_demo_record", MODE_PRIVATE).edit()
                 .putInt("wins", demoWins)
                 .putInt("losses", demoLosses)
-                .putInt("consecutive_losses", consecutiveLosses)
+                .putString("daily_day", sessionDay)
+                .putInt("daily_wins", dailySession.wins())
+                .putInt("daily_losses", dailySession.losses())
+                .putInt("daily_consecutive_losses",
+                        dailySession.consecutiveLosses())
                 .apply();
     }
 
@@ -1033,13 +1060,30 @@ public final class MainActivity extends Activity {
         int total = demoWins + demoLosses;
         String rate = total == 0 ? "NO SAMPLE"
                 : Math.round(demoWins * 100f / total) + "%";
-        recordView.setText("DEMO RECORD " + demoWins + "-" + demoLosses
-                + " • " + rate + " • LOSS STREAK " + consecutiveLosses);
-        recordView.setTextColor(riskStopped ? Color.rgb(239, 83, 80)
-                : Color.rgb(171, 183, 201));
+        int auditCents = demoWins * DailyTargetSession.WIN_PROFIT_CENTS
+                - demoLosses * DailyTargetSession.STAKE_CENTS;
+        String validation = total >= 500 ? "500+ SAMPLE" : "SAMPLE " + total + "/500";
+        recordView.setText("TODAY "
+                + DailyTargetSession.formatMoney(dailySession.profitCents())
+                + " / +$5.00 • " + dailySession.trades() + "/10 TRADES • $2 @82%\n"
+                + "AUDIT " + demoWins + "W-" + demoLosses + "L • " + rate
+                + " • " + DailyTargetSession.formatMoney(auditCents)
+                + " • " + validation);
+        int color = Color.rgb(171, 183, 201);
+        if (dailySession.stopReason() == DailyTargetSession.StopReason.TARGET_REACHED) {
+            color = Color.rgb(80, 230, 169);
+        } else if (riskStopped) {
+            color = Color.rgb(239, 83, 80);
+        }
+        recordView.setTextColor(color);
     }
 
     private void recordCurrentSignal(boolean win) {
+        ensureCurrentDemoDay();
+        if (riskStopped) {
+            showDailySessionStop();
+            return;
+        }
         SignalLockBook.Entry<AnalysisResult> signal = signalLocks.latest(
                 assetKey(currentAssetName));
         if (signal == null) {
@@ -1059,27 +1103,36 @@ public final class MainActivity extends Activity {
         signal.rated = true;
         if (win) {
             demoWins++;
-            consecutiveLosses = 0;
         } else {
             demoLosses++;
-            consecutiveLosses++;
         }
-        riskStopped = consecutiveLosses >= LOSS_STOP_LIMIT;
+        dailySession.record(win);
+        riskStopped = dailySession.isStopped();
         saveDemoRecord();
         updateRecordView();
         if (riskStopped) {
             scanning = false;
-            toggleButton.setText("START ANALYSIS");
-            if (assetScanActive) stopAssetScan("RISK STOP", "3 consecutive demo losses");
-            showWait("RISK STOP", "3 consecutive demo losses • reset log before continuing");
+            toggleButton.setText(sessionButtonLabel());
+            if (assetScanActive) stopAssetScan("DAILY SESSION STOP",
+                    dailySession.stopDetail());
+            showDailySessionStop();
         } else {
             showWait(win ? "WIN RECORDED" : "LOSS RECORDED",
-                    win ? "Demo result saved • next signal waits for a closed candle"
-                            : "Do not raise the amount • no recovery trade or martingale");
+                    (win ? "Demo result saved" : "No stake increase or recovery trade")
+                            + " • today "
+                            + DailyTargetSession.formatMoney(dailySession.profitCents())
+                            + " • " + dailySession.trades() + "/10 trades");
         }
     }
 
     private void resetDemoRecord() {
+        ensureCurrentDemoDay();
+        if (riskStopped) {
+            showWait("DAILY STOP LOCKED",
+                    dailySession.stopDetail()
+                            + " • a fresh session opens next local day");
+            return;
+        }
         assetScanActive = false;
         assetScanMinute = -1L;
         assetQueue.clear();
@@ -1087,7 +1140,8 @@ public final class MainActivity extends Activity {
         assetScanButton.setText("AUTO SCAN");
         demoWins = 0;
         demoLosses = 0;
-        consecutiveLosses = 0;
+        dailySession = new DailyTargetSession();
+        sessionDay = currentDayKey();
         riskStopped = false;
         scanning = true;
         signalLocks.clear();
@@ -1095,7 +1149,42 @@ public final class MainActivity extends Activity {
         saveDemoRecord();
         updateRecordView();
         toggleButton.setText("PAUSE ANALYSIS");
-        showWait("DEMO LOG RESET", "Testing resumed • use fixed amount and record every signal");
+        showWait("DEMO LOG RESET",
+                "$2 @82% session restarted • target +$5 • stop -$4 / two losses");
+    }
+
+    private void ensureCurrentDemoDay() {
+        String today = currentDayKey();
+        if (today.equals(sessionDay)) return;
+        boolean wasStopped = riskStopped;
+        sessionDay = today;
+        dailySession = new DailyTargetSession();
+        riskStopped = false;
+        signalLocks.clear();
+        analyzedMinuteByAsset.clear();
+        if (wasStopped) scanning = true;
+        saveDemoRecord();
+        updateRecordView();
+        if (toggleButton != null) {
+            toggleButton.setText(scanning ? "PAUSE ANALYSIS" : "START ANALYSIS");
+        }
+    }
+
+    private String currentDayKey() {
+        return java.time.LocalDate.now().toString();
+    }
+
+    private String sessionButtonLabel() {
+        return dailySession.stopReason() == DailyTargetSession.StopReason.TARGET_REACHED
+                ? "TARGET COMPLETE" : "DAILY STOP";
+    }
+
+    private void showDailySessionStop() {
+        String status = dailySession.stopReason()
+                == DailyTargetSession.StopReason.TARGET_REACHED
+                ? "DEMO TARGET REACHED" : "DAILY SESSION STOP";
+        showWait(status, dailySession.stopDetail()
+                + " • resumes automatically next local day");
     }
 
     private static String signed(int value) {

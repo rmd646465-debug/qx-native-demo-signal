@@ -1,9 +1,9 @@
-QX STABLE CLOSE DEMO v1.2 — বাংলা সারসংক্ষেপ
+QX DAILY TARGET DEMO v1.3 — বাংলা সারসংক্ষেপ
 ================================================
 
 App ID: com.qx.adaptiveedge
-Version: 1.2.1-chart-repair (versionCode 4)
-Build artifact: QX-Stable-Close-Demo-APK-v4
+Version: 1.3.0-daily-target-demo (versionCode 5)
+Build artifact: QX-Daily-Target-Demo-APK-v5
 
 সতর্কতা
 --------
@@ -100,14 +100,20 @@ DEMO result record
 ------------------
 - Expiry শেষ হলে MARK WIN অথবা MARK LOSS চাপতে হবে।
 - একই signal একবারের বেশি mark করা যাবে না।
-- Total W-L, observed percentage এবং loss streak ফোনে save থাকবে।
-- টানা 3টি marked loss হলে RISK STOP হবে এবং analysis/Auto Scan বন্ধ হবে।
-- RESET LOG দিলে record clear হয়ে demo testing আবার শুরু হবে।
+- হিসাবের নির্দিষ্ট demo stake $2 এবং payout assumption 82%।
+- Win = +$1.64, Loss = -$2.00।
+- Daily P/L +$5 হলে target protect করে analysis/Auto Scan বন্ধ হবে।
+- Daily P/L -$4 বা টানা 2 loss হলে hard stop হবে।
+- সর্বোচ্চ 10টি marked result-এর পরে daily session বন্ধ হবে।
+- Hard stop RESET LOG দিয়ে একই দিনে bypass করা যাবে না; পরের local date-এ
+  fresh session নিজে চালু হবে।
+- Total W-L, observed percentage, fixed-payout net এবং 500-sample progress
+  ফোনে save থাকবে।
 - কোনো recovery bet, Martingale বা loss-এর পরে amount বাড়ানোর নির্দেশ থাকবে না।
 
 এই record ব্যবহারকারী নিজে mark করবেন; এটি independently verified win rate নয়।
-কমপক্ষে 100টি demo signal record করার আগে real-money ব্যবহার করা যাবে না। 100
-trade-এর ফলও ভবিষ্যতের লাভের নিশ্চয়তা নয়। Martingale ব্যবহার করবেন না।
+500টি ধারাবাহিক demo signal-এর audit target দেখানো হয়। 500 trade-এর ফলও
+ভবিষ্যতের লাভের নিশ্চয়তা নয়। Martingale ব্যবহার করবেন না।
 
 Test করা হয়েছে
 ---------------
@@ -119,6 +125,8 @@ Test করা হয়েছে
 - Late-entry = WAIT
 - Flat market ও volatility shock = WAIT
 - 30টির কম closed candle reject
+- $2/82% exact P/L calculation
+- +$5 target, -$4/two-loss stop এবং 10-trade cap
 
 গুরুত্বপূর্ণ সীমাবদ্ধতা
 ----------------------

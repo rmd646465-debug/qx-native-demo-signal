@@ -1,4 +1,4 @@
-name: Build QX Stable Close Demo APK
+name: Build QX Daily Target Demo APK
 
 on:
   workflow_dispatch:
@@ -40,6 +40,7 @@ jobs:
             app/src/main/java/com/qx/adaptiveedge/SignalEngine.java \
             app/src/main/java/com/qx/adaptiveedge/SignalStability.java \
             app/src/main/java/com/qx/adaptiveedge/SignalLockBook.java \
+            app/src/main/java/com/qx/adaptiveedge/DailyTargetSession.java \
             engine-test/com/qx/adaptiveedge/SignalEngineSelfTest.java
           java -cp build/engine-test com.qx.adaptiveedge.SignalEngineSelfTest
 
@@ -49,7 +50,7 @@ jobs:
       - name: Upload installable APK
         uses: actions/upload-artifact@v4
         with:
-          name: QX-Stable-Close-Demo-APK-v4
+          name: QX-Daily-Target-Demo-APK-v5
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30

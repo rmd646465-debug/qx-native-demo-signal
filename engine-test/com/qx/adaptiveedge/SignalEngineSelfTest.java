@@ -192,6 +192,56 @@ public final class SignalEngineSelfTest {
                 "new signal may be issued only after old expiry");
     }
 
+    private static void dailyTargetChecks() {
+        DailyTargetSession target = new DailyTargetSession();
+        target.record(true);
+        target.record(true);
+        target.record(true);
+        require(!target.isStopped() && target.profitCents() == 492,
+                "three clean wins must remain below the $5 target");
+        target.record(true);
+        require(target.isStopped()
+                        && target.stopReason()
+                        == DailyTargetSession.StopReason.TARGET_REACHED,
+                "four clean wins must protect the $5-$7 target range");
+        require(target.profitCents() == 656 && target.trades() == 4,
+                "four $2 wins at 82% must equal +$6.56");
+
+        DailyTargetSession lossStop = new DailyTargetSession();
+        lossStop.record(false);
+        require(!lossStop.isStopped(), "one loss must not stop the session");
+        lossStop.record(false);
+        require(lossStop.isStopped()
+                        && lossStop.stopReason()
+                        == DailyTargetSession.StopReason.LOSS_LIMIT,
+                "two consecutive losses must trigger the -$4 stop");
+        require(lossStop.profitCents() == -400,
+                "two $2 losses must equal -$4.00");
+
+        DailyTargetSession tradeLimit = new DailyTargetSession();
+        for (int i = 0; i < 5; i++) {
+            tradeLimit.record(true);
+            tradeLimit.record(false);
+        }
+        require(tradeLimit.isStopped()
+                        && tradeLimit.stopReason()
+                        == DailyTargetSession.StopReason.TRADE_LIMIT,
+                "alternating results must stop at ten trades");
+        require(tradeLimit.profitCents() == -180,
+                "five wins and five losses must equal -$1.80 at 82%");
+
+        boolean rejectedAfterStop = false;
+        try {
+            target.record(true);
+        } catch (IllegalStateException expected) {
+            rejectedAfterStop = true;
+        }
+        require(rejectedAfterStop, "a stopped daily session must reject more results");
+        require("+$6.56".equals(DailyTargetSession.formatMoney(656))
+                        && "-$4.00".equals(DailyTargetSession.formatMoney(-400)),
+                "money formatting must be exact");
+    }
+
     public static void main(String[] args) {
         List<SignalEngine.CandlePoint> sweep = sweepUp();
         List<SignalEngine.CandlePoint> retest = retestUp();
@@ -251,8 +301,9 @@ public final class SignalEngineSelfTest {
         }
         require(rejectedShortHistory, "fewer than 30 closed candles must be rejected");
         stabilityAndLockChecks();
+        dailyTargetChecks();
 
-        System.out.println("PASS: engine, 3-read stability, per-currency expiry lock, safety");
+        System.out.println("PASS: engine, stability, expiry lock, daily target and safety");
         System.out.println("SWEEP " + sweepDecision.detail);
         System.out.println("RETEST " + retestDecision.detail);
         System.out.println("PULLBACK 2/3/5 " + shortDecision.expiryMinutes + "/"
