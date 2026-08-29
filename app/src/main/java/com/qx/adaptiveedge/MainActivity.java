@@ -31,8 +31,10 @@ import org.json.JSONObject;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.function.Consumer;
@@ -53,6 +55,12 @@ public final class MainActivity extends Activity {
     };
     private static final long SCAN_INTERVAL_MS = 1000L;
     private static final long CHART_WARMUP_MS = 1500L;
+    private static final long STABILITY_FRAME_MS = 450L;
+    private static final long MINUTE_MS = 60_000L;
+    private static final long CLOSE_WINDOW_START_MS = 900L;
+    private static final long CLOSE_WINDOW_END_MS = 8_000L;
+    private static final long AUTO_SCAN_FRESH_END_MS = 18_000L;
+    private static final int LOSS_STOP_LIMIT = 3;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService analyzerExecutor = Executors.newSingleThreadExecutor();
@@ -62,11 +70,13 @@ public final class MainActivity extends Activity {
     private TextView detailView;
     private TextView waitView;
     private TextView connectionView;
+    private TextView recordView;
     private Button toggleButton;
     private Button assetScanButton;
     private volatile boolean pageReady;
     private volatile boolean scanning = true;
     private volatile boolean analysisBusy;
+    private boolean stableSequenceActive;
     private boolean assetScanActive;
     private final List<String> assetQueue = new ArrayList<>();
     private final List<AssetScanResult> assetScanResults = new ArrayList<>();
@@ -75,11 +85,19 @@ public final class MainActivity extends Activity {
     private int startUrlIndex;
     private String currentLoadUrl = START_URLS[0];
     private String failedMainFrameUrl = "";
+    private long assetScanMinute = -1L;
+    private final Map<String, Long> analyzedMinuteByAsset = new HashMap<>();
+    private final SignalLockBook<AnalysisResult> signalLocks = new SignalLockBook<>();
+    private int demoWins;
+    private int demoLosses;
+    private int consecutiveLosses;
+    private boolean riskStopped;
 
     private final Runnable scanLoop = new Runnable() {
         @Override public void run() {
-            if (scanning && pageReady && !analysisBusy && !assetScanActive) {
-                refreshCurrentAssetName(MainActivity.this::captureAndAnalyze);
+            if (scanning && pageReady && !analysisBusy && !stableSequenceActive
+                    && !assetScanActive) {
+                refreshCurrentAssetName(MainActivity.this::runLiveCloseCycle);
             }
             mainHandler.postDelayed(this, SCAN_INTERVAL_MS);
         }
@@ -88,7 +106,10 @@ public final class MainActivity extends Activity {
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        loadDemoRecord();
         setContentView(buildUi());
+        if (riskStopped) toggleButton.setText("START ANALYSIS");
+        updateRecordView();
         configureWebView();
         loadStartUrl(0, true);
         mainHandler.postDelayed(scanLoop, 3500L);
@@ -104,7 +125,7 @@ public final class MainActivity extends Activity {
         header.setPadding(dp(14), dp(10), dp(10), dp(9));
         header.setBackgroundColor(Color.rgb(10, 18, 32));
 
-        TextView title = text("QX Structure Pulse Demo", 16, Color.WHITE, true);
+        TextView title = text("QX Stable Close Demo", 16, Color.WHITE, true);
         header.addView(title, new LinearLayout.LayoutParams(0, dp(44), 1f));
         connectionView = text("CONNECTING", 10, Color.rgb(245, 179, 66), true);
         connectionView.setGravity(Gravity.CENTER);
@@ -122,13 +143,14 @@ public final class MainActivity extends Activity {
         signalView.setGravity(Gravity.CENTER);
         strengthView = text("Live chart loading…", 11, Color.rgb(171, 183, 201), false);
         strengthView.setGravity(Gravity.CENTER);
-        detailView = text("NEW PRICE STRUCTURE ENGINE • CLOSED CANDLES • DEMO ONLY", 9, Color.rgb(114, 130, 153), false);
+        detailView = text("3 STABLE READS • CLOSED-CANDLE ENTRY • DEMO ONLY", 9, Color.rgb(114, 130, 153), false);
         detailView.setGravity(Gravity.CENTER);
+        detailView.setMaxLines(2);
         waitView = text("Reading the current currency chart…", 10, Color.rgb(245, 179, 66), true);
         waitView.setGravity(Gravity.CENTER);
         signalPanel.addView(signalView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(36)));
         signalPanel.addView(strengthView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(20)));
-        signalPanel.addView(detailView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(20)));
+        signalPanel.addView(detailView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(34)));
         signalPanel.addView(waitView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(20)));
         root.addView(signalPanel);
 
@@ -143,6 +165,12 @@ public final class MainActivity extends Activity {
 
         toggleButton = button("PAUSE ANALYSIS", Color.rgb(11, 139, 91));
         toggleButton.setOnClickListener(v -> {
+            if (riskStopped) {
+                scanning = false;
+                toggleButton.setText("START ANALYSIS");
+                showWait("RISK STOP", "Reset the demo log after 3 consecutive losses");
+                return;
+            }
             scanning = !scanning;
             toggleButton.setText(scanning ? "PAUSE ANALYSIS" : "START ANALYSIS");
             if (!scanning) showWait("Paused by user", "Analysis stopped • Chart remains live");
@@ -174,7 +202,35 @@ public final class MainActivity extends Activity {
         controls.addView(reload, reloadParams);
         root.addView(controls);
 
-        TextView risk = text("SET CHART TO 1 MIN • DEMO ONLY • NO WIN GUARANTEE • NO AUTO-TRADE", 9, Color.rgb(255, 204, 111), true);
+        LinearLayout resultControls = new LinearLayout(this);
+        resultControls.setGravity(Gravity.CENTER);
+        resultControls.setPadding(dp(8), dp(0), dp(8), dp(6));
+        resultControls.setBackgroundColor(Color.rgb(10, 18, 32));
+
+        Button markWin = button("MARK WIN", Color.rgb(11, 139, 91));
+        markWin.setOnClickListener(v -> recordCurrentSignal(true));
+        resultControls.addView(markWin, new LinearLayout.LayoutParams(0, dp(38), 1f));
+
+        Button markLoss = button("MARK LOSS", Color.rgb(181, 61, 61));
+        markLoss.setOnClickListener(v -> recordCurrentSignal(false));
+        LinearLayout.LayoutParams lossParams = new LinearLayout.LayoutParams(0, dp(38), 1f);
+        lossParams.setMarginStart(dp(6));
+        resultControls.addView(markLoss, lossParams);
+
+        Button resetLog = button("RESET LOG", Color.rgb(75, 86, 105));
+        resetLog.setOnClickListener(v -> resetDemoRecord());
+        LinearLayout.LayoutParams resetParams = new LinearLayout.LayoutParams(0, dp(38), 1f);
+        resetParams.setMarginStart(dp(6));
+        resultControls.addView(resetLog, resetParams);
+        root.addView(resultControls);
+
+        recordView = text("DEMO RECORD 0-0", 9, Color.rgb(171, 183, 201), true);
+        recordView.setGravity(Gravity.CENTER);
+        recordView.setPadding(dp(8), dp(1), dp(8), dp(5));
+        recordView.setBackgroundColor(Color.rgb(10, 18, 32));
+        root.addView(recordView);
+
+        TextView risk = text("SET CHART TO 1 MIN • WAIT MEANS NO TRADE • NO WIN GUARANTEE • NO AUTO-TRADE", 9, Color.rgb(255, 204, 111), true);
         risk.setGravity(Gravity.CENTER);
         risk.setPadding(dp(8), dp(6), dp(8), dp(7));
         root.addView(risk);
@@ -289,7 +345,7 @@ public final class MainActivity extends Activity {
         failedMainFrameUrl = "";
         connectionView.setText("LIVE PAGE");
         connectionView.setTextColor(Color.rgb(80, 230, 169));
-        detailView.setText("Per-currency regime analysis • trend / breakout / range");
+        detailView.setText("3 stable reads • closed-candle gate • per-currency lock");
         refreshCurrentAssetName(null);
     }
 
@@ -372,7 +428,7 @@ public final class MainActivity extends Activity {
                 + "const name=pair+(t.includes('OTC')?' (OTC)':'');const old=map.get(pair);"
                 + "if(!old||p>old.payout||(name.includes('OTC')&&!old.name.includes('OTC')))map.set(pair,{name:name,payout:p});}"
                 + "return Array.from(map.values()).filter(x=>x.payout===0||x.payout>=85)"
-                + ".sort((a,b)=>b.payout-a.payout).map(x=>x.name).slice(0,12);})()";
+                + ".sort((a,b)=>b.payout-a.payout).map(x=>x.name).slice(0,4);})()";
     }
 
     private String selectAssetScript(String asset) {
@@ -407,9 +463,59 @@ public final class MainActivity extends Activity {
         });
     }
 
+    private void runLiveCloseCycle() {
+        long now = System.currentTimeMillis();
+        SignalLockBook.Entry<AnalysisResult> active = activeSignal(currentAssetName, now);
+        if (active != null) {
+            renderLockedSignal(active, now);
+            return;
+        }
+        if (riskStopped) {
+            showWait("RISK STOP", "3 consecutive demo losses • reset log before testing again");
+            return;
+        }
+        if (!isCloseWindow(now)) {
+            showWait("WAIT FOR NEXT CLOSED CANDLE",
+                    "A signal is checked only just after a 1-minute candle closes");
+            return;
+        }
+
+        String assetKey = assetKey(currentAssetName);
+        long minuteKey = now / MINUTE_MS;
+        Long analyzedMinute = analyzedMinuteByAsset.get(assetKey);
+        if (analyzedMinute != null && analyzedMinute == minuteKey) return;
+
+        captureStableAnalysis(result -> {
+            if (!"UNSTABLE CHART READ".equals(result.status)) {
+                analyzedMinuteByAsset.put(assetKey, minuteKey);
+            }
+            acceptStableResult(result);
+        });
+    }
+
+    private boolean isCloseWindow(long now) {
+        long position = now % MINUTE_MS;
+        return position >= CLOSE_WINDOW_START_MS && position <= CLOSE_WINDOW_END_MS;
+    }
+
+    private long delayToCloseWindow(long now) {
+        long position = now % MINUTE_MS;
+        if (position < CLOSE_WINDOW_START_MS) return CLOSE_WINDOW_START_MS - position;
+        return MINUTE_MS - position + CLOSE_WINDOW_START_MS;
+    }
+
+    private boolean isAutoScanFresh(long now) {
+        return assetScanMinute >= 0 && now / MINUTE_MS == assetScanMinute
+                && now % MINUTE_MS <= AUTO_SCAN_FRESH_END_MS;
+    }
+
     private void beginAssetScan() {
         if (!pageReady || webView == null) {
             showWait("Live demo not ready", "Open DEMO chart, then tap AUTO SCAN");
+            return;
+        }
+        if (riskStopped) {
+            showWait("RISK STOP", "Reset the demo log before another scan");
             return;
         }
         assetScanActive = true;
@@ -417,7 +523,21 @@ public final class MainActivity extends Activity {
         assetScanResults.clear();
         assetScanIndex = 0;
         assetScanButton.setText("STOP SCAN");
-        showWait("Opening currency list", "Analysis-only scan • trade controls stay untouched");
+        armAssetScanAtClose();
+    }
+
+    private void armAssetScanAtClose() {
+        if (!assetScanActive) return;
+        long now = System.currentTimeMillis();
+        if (!isCloseWindow(now)) {
+            showWait("AUTO SCAN ARMED",
+                    "It starts just after the next 1-minute candle closes");
+            mainHandler.postDelayed(this::armAssetScanAtClose,
+                    Math.max(100L, delayToCloseWindow(now)));
+            return;
+        }
+        assetScanMinute = now / MINUTE_MS;
+        showWait("Opening currency list", "Up to 4 high-payout charts • 3 reads per chart");
         webView.evaluateJavascript(openAssetListScript(), ignored ->
                 mainHandler.postDelayed(this::collectAssetQueue, 900L));
     }
@@ -445,13 +565,22 @@ public final class MainActivity extends Activity {
 
     private void scanNextAsset() {
         if (!assetScanActive) return;
+        if (!isAutoScanFresh(System.currentTimeMillis())) {
+            if (assetScanResults.isEmpty()) {
+                stopAssetScan("ENTRY WINDOW MISSED",
+                        "No late signal was forced • arm AUTO SCAN again");
+            } else {
+                finishAssetScan();
+            }
+            return;
+        }
         if (assetScanIndex >= assetQueue.size()) {
             finishAssetScan();
             return;
         }
         String asset = assetQueue.get(assetScanIndex);
         showWait("Scanning " + (assetScanIndex + 1) + "/" + assetQueue.size(),
-                asset + " • one closed-candle structure snapshot");
+                asset + " • verifying three stable chart reads");
         Consumer<Boolean> selected = ok -> {
             if (!assetScanActive) return;
             if (!ok) {
@@ -478,14 +607,22 @@ public final class MainActivity extends Activity {
 
     private void scanFirstFrame(String asset) {
         if (!assetScanActive) return;
-        captureAndAnalyze(result -> {
+        captureStableAnalysis(result -> {
             if (!assetScanActive) return;
-            assetScanResults.add(new AssetScanResult(asset, result));
-            if (!"WAIT".equals(result.direction) && result.strength >= 80) {
+            AnalysisResult candidate = result;
+            if (!"WAIT".equals(candidate.direction)
+                    && !isAutoScanFresh(System.currentTimeMillis())) {
+                candidate = AnalysisResult.waiting("ENTRY WINDOW MISSED",
+                        candidate.candles, candidate.flowBias, "CLOSE GATE", 0,
+                        "The verified setup arrived too late • no signal issued");
+            }
+            assetScanResults.add(new AssetScanResult(asset, candidate));
+            if (!"WAIT".equals(candidate.direction) && candidate.strength >= 80) {
                 assetScanActive = false;
+                assetScanMinute = -1L;
                 assetScanButton.setText("AUTO SCAN");
                 currentAssetName = asset;
-                renderResult(result);
+                acceptStableResult(candidate);
                 openThenSelectAsset(asset, ignored -> { });
                 return;
             }
@@ -509,6 +646,8 @@ public final class MainActivity extends Activity {
         }
         assetScanActive = false;
         assetScanButton.setText("AUTO SCAN");
+        boolean fresh = isAutoScanFresh(System.currentTimeMillis());
+        assetScanMinute = -1L;
         if (best == null) {
             if (bestWait != null) {
                 currentAssetName = bestWait.asset;
@@ -524,7 +663,13 @@ public final class MainActivity extends Activity {
         }
         AssetScanResult winner = best;
         currentAssetName = winner.asset;
-        renderResult(winner.result);
+        if (fresh) {
+            acceptStableResult(winner.result);
+        } else {
+            renderResult(AnalysisResult.waiting("ENTRY WINDOW MISSED",
+                    winner.result.candles, winner.result.flowBias, "CLOSE GATE", 0,
+                    "Scan finished too late • no directional signal issued"));
+        }
         openThenSelectAsset(winner.asset, ignored -> { });
     }
 
@@ -532,12 +677,57 @@ public final class MainActivity extends Activity {
         assetScanActive = false;
         assetQueue.clear();
         assetScanResults.clear();
+        assetScanMinute = -1L;
         assetScanButton.setText("AUTO SCAN");
         showWait(status, detail);
     }
 
-    private void captureAndAnalyze() {
-        captureAndAnalyze(null);
+    private void captureStableAnalysis(Consumer<AnalysisResult> receiver) {
+        if (stableSequenceActive) return;
+        stableSequenceActive = true;
+        captureStableRead(new ArrayList<>(), receiver);
+    }
+
+    private void captureStableRead(List<AnalysisResult> reads,
+                                   Consumer<AnalysisResult> receiver) {
+        captureAndAnalyze(result -> {
+            reads.add(result);
+            if (reads.size() < SignalStability.REQUIRED_READS) {
+                mainHandler.postDelayed(() -> captureStableRead(reads, receiver),
+                        STABILITY_FRAME_MS);
+                return;
+            }
+            stableSequenceActive = false;
+            receiver.accept(stableConsensus(reads));
+        });
+    }
+
+    private AnalysisResult stableConsensus(List<AnalysisResult> reads) {
+        AnalysisResult first = reads.get(0);
+        List<SignalStability.Read> signatures = new ArrayList<>();
+        for (AnalysisResult read : reads) {
+            signatures.add(new SignalStability.Read(read.candles, read.direction,
+                    read.profile, read.expiryMinutes, read.strength, read.flowBias));
+        }
+        boolean stable = SignalStability.agrees(signatures);
+        if (!stable) {
+            StringBuilder trace = new StringBuilder("Reads ");
+            for (int i = 0; i < reads.size(); i++) {
+                if (i > 0) trace.append(" / ");
+                AnalysisResult read = reads.get(i);
+                trace.append(read.candles).append('-').append(read.direction);
+                if (read.expiryMinutes > 0) trace.append('-').append(read.expiryMinutes).append('m');
+            }
+            return AnalysisResult.waiting("UNSTABLE CHART READ", first.candles, 0,
+                    "STABILITY FILTER", 0, trace + " • no signal issued");
+        }
+
+        AnalysisResult conservative = first;
+        for (AnalysisResult read : reads) {
+            if (!"WAIT".equals(read.direction)
+                    && read.strength < conservative.strength) conservative = read;
+        }
+        return conservative;
     }
 
     private void captureAndAnalyze(Consumer<AnalysisResult> receiver) {
@@ -604,6 +794,43 @@ public final class MainActivity extends Activity {
         else renderResult(result);
     }
 
+    private void acceptStableResult(AnalysisResult result) {
+        if ("WAIT".equals(result.direction)) {
+            renderResult(result);
+            return;
+        }
+        long now = System.currentTimeMillis();
+        SignalLockBook.Entry<AnalysisResult> active = activeSignal(currentAssetName, now);
+        if (active == null) {
+            String key = assetKey(currentAssetName);
+            active = signalLocks.issueOrKeep(key, currentAssetName, result, now,
+                    now + result.expiryMinutes * MINUTE_MS);
+        }
+        renderLockedSignal(active, now);
+    }
+
+    private SignalLockBook.Entry<AnalysisResult> activeSignal(String asset, long now) {
+        return signalLocks.active(assetKey(asset), now);
+    }
+
+    private String assetKey(String asset) {
+        return asset == null ? "CURRENT ASSET"
+                : asset.trim().toUpperCase(Locale.US);
+    }
+
+    private void renderLockedSignal(SignalLockBook.Entry<AnalysisResult> signal,
+                                    long now) {
+        renderResult(signal.payload);
+        detailView.setText("WHY " + signal.payload.direction + ": "
+                + setupReason(signal.payload) + " • UP "
+                + signal.payload.bullishPoints + " vs DOWN "
+                + signal.payload.bearishPoints + "\n3/3 STABLE • "
+                + signal.payload.candles + " CLOSED CANDLES");
+        waitView.setText("SIGNAL LOCKED FOR ACTIVE EXPIRY • NO REVERSAL");
+        waitView.setTextColor("UP".equals(signal.payload.direction)
+                ? Color.rgb(22, 199, 132) : Color.rgb(239, 83, 80));
+    }
+
     private void renderResult(AnalysisResult result) {
         int color;
         String symbol;
@@ -624,7 +851,7 @@ public final class MainActivity extends Activity {
                     + " • SETUP " + result.strength + "/100");
             detailView.setText("Detected " + result.candles + " closed candles • FLOW "
                     + signed(result.flowBias) + " • manual demo only");
-            waitView.setText("SIGNAL READY NOW • ONE SNAPSHOT • NO AUTO-TRADE");
+            waitView.setText("VERIFIED AT CANDLE CLOSE • NO AUTO-TRADE");
             waitView.setTextColor(color);
         } else {
             strengthView.setText(currentAssetName + " • " + result.profile
@@ -632,8 +859,123 @@ public final class MainActivity extends Activity {
             detailView.setText("Detected " + result.candles + " candles • FLOW "
                     + signed(result.flowBias) + " • " + result.detail);
             waitView.setTextColor(Color.rgb(245, 179, 66));
-            waitView.setText("NO EDGE NOW • NO COUNTDOWN • TRY ANOTHER CURRENCY");
+            if ("WAIT FOR NEXT CLOSED CANDLE".equals(result.status)) {
+                waitView.setText("CLOSE GATE ACTIVE • NO MID-CANDLE REVERSAL");
+            } else if ("UNSTABLE CHART READ".equals(result.status)) {
+                waitView.setText("3 READS DISAGREED • NO SIGNAL");
+            } else if ("RISK STOP".equals(result.status)) {
+                waitView.setText("RESET LOG TO RESUME DEMO TESTING");
+            } else {
+                waitView.setText("NO VERIFIED EDGE • WAIT OR TRY ANOTHER CURRENCY");
+            }
         }
+    }
+
+    private String setupReason(AnalysisResult result) {
+        if (SignalEngine.SWEEP_PROFILE.equals(result.profile)) {
+            return "UP".equals(result.direction)
+                    ? "LOCAL LOW SWEEP + BULLISH REJECTION CLOSE"
+                    : "LOCAL HIGH SWEEP + BEARISH REJECTION CLOSE";
+        }
+        if (SignalEngine.RETEST_PROFILE.equals(result.profile)) {
+            return "UP".equals(result.direction)
+                    ? "RESISTANCE BREAK + RETEST HELD"
+                    : "SUPPORT BREAK + RETEST HELD";
+        }
+        if (SignalEngine.PULLBACK_PROFILE.equals(result.profile)) {
+            return "UP".equals(result.direction)
+                    ? "UP LEG + CONTROLLED PULLBACK + RESUMPTION"
+                    : "DOWN LEG + CONTROLLED PULLBACK + RESUMPTION";
+        }
+        return "COMPLETE CLOSED-CANDLE CONTEXT";
+    }
+
+    private void loadDemoRecord() {
+        android.content.SharedPreferences prefs = getSharedPreferences(
+                "stable_close_demo_record", MODE_PRIVATE);
+        demoWins = prefs.getInt("wins", 0);
+        demoLosses = prefs.getInt("losses", 0);
+        consecutiveLosses = prefs.getInt("consecutive_losses", 0);
+        riskStopped = consecutiveLosses >= LOSS_STOP_LIMIT;
+        if (riskStopped) scanning = false;
+    }
+
+    private void saveDemoRecord() {
+        getSharedPreferences("stable_close_demo_record", MODE_PRIVATE).edit()
+                .putInt("wins", demoWins)
+                .putInt("losses", demoLosses)
+                .putInt("consecutive_losses", consecutiveLosses)
+                .apply();
+    }
+
+    private void updateRecordView() {
+        if (recordView == null) return;
+        int total = demoWins + demoLosses;
+        String rate = total == 0 ? "NO SAMPLE"
+                : Math.round(demoWins * 100f / total) + "%";
+        recordView.setText("DEMO RECORD " + demoWins + "-" + demoLosses
+                + " • " + rate + " • LOSS STREAK " + consecutiveLosses);
+        recordView.setTextColor(riskStopped ? Color.rgb(239, 83, 80)
+                : Color.rgb(171, 183, 201));
+    }
+
+    private void recordCurrentSignal(boolean win) {
+        SignalLockBook.Entry<AnalysisResult> signal = signalLocks.latest(
+                assetKey(currentAssetName));
+        if (signal == null) {
+            showWait("NO SIGNAL TO MARK", "A verified locked signal is required first");
+            return;
+        }
+        if (System.currentTimeMillis() < signal.expiresAt) {
+            renderLockedSignal(signal, System.currentTimeMillis());
+            waitView.setText("MARK RESULT ONLY AFTER THE ACTIVE EXPIRY ENDS");
+            return;
+        }
+        if (signal.rated) {
+            showWait("RESULT ALREADY RECORDED",
+                    signal.displayAsset + " can be marked only once");
+            return;
+        }
+        signal.rated = true;
+        if (win) {
+            demoWins++;
+            consecutiveLosses = 0;
+        } else {
+            demoLosses++;
+            consecutiveLosses++;
+        }
+        riskStopped = consecutiveLosses >= LOSS_STOP_LIMIT;
+        saveDemoRecord();
+        updateRecordView();
+        if (riskStopped) {
+            scanning = false;
+            toggleButton.setText("START ANALYSIS");
+            if (assetScanActive) stopAssetScan("RISK STOP", "3 consecutive demo losses");
+            showWait("RISK STOP", "3 consecutive demo losses • reset log before continuing");
+        } else {
+            showWait(win ? "WIN RECORDED" : "LOSS RECORDED",
+                    win ? "Demo result saved • next signal waits for a closed candle"
+                            : "Do not raise the amount • no recovery trade or martingale");
+        }
+    }
+
+    private void resetDemoRecord() {
+        assetScanActive = false;
+        assetScanMinute = -1L;
+        assetQueue.clear();
+        assetScanResults.clear();
+        assetScanButton.setText("AUTO SCAN");
+        demoWins = 0;
+        demoLosses = 0;
+        consecutiveLosses = 0;
+        riskStopped = false;
+        scanning = true;
+        signalLocks.clear();
+        analyzedMinuteByAsset.clear();
+        saveDemoRecord();
+        updateRecordView();
+        toggleButton.setText("PAUSE ANALYSIS");
+        showWait("DEMO LOG RESET", "Testing resumed • use fixed amount and record every signal");
     }
 
     private static String signed(int value) {
@@ -713,11 +1055,14 @@ public final class MainActivity extends Activity {
         final String status;
         final String profile;
         final int readiness;
+        final int bullishPoints;
+        final int bearishPoints;
         final String detail;
 
         AnalysisResult(String direction, int strength, int candles, int flowBias,
                        int expiryMinutes, String status, String profile,
-                       int readiness, String detail) {
+                       int readiness, int bullishPoints, int bearishPoints,
+                       String detail) {
             this.direction = direction;
             this.strength = strength;
             this.candles = candles;
@@ -726,6 +1071,8 @@ public final class MainActivity extends Activity {
             this.status = status;
             this.profile = profile;
             this.readiness = readiness;
+            this.bullishPoints = bullishPoints;
+            this.bearishPoints = bearishPoints;
             this.detail = detail;
         }
 
@@ -736,7 +1083,7 @@ public final class MainActivity extends Activity {
         static AnalysisResult waiting(String status, int candles, int flowBias,
                                       String profile, int readiness, String detail) {
             return new AnalysisResult("WAIT", 0, candles, flowBias, 0, status,
-                    profile, readiness, detail);
+                    profile, readiness, 0, 0, detail);
         }
     }
 
@@ -751,7 +1098,7 @@ public final class MainActivity extends Activity {
                 List<SignalEngine.CandlePoint> detected = extractCandles(bitmap);
                 if (detected.size() < SignalEngine.MIN_CANDLES + 1) {
                     return AnalysisResult.waiting("Chart not ready", detected.size(), 0,
-                            "Keep at least 17 red/green candles visible");
+                            "Keep at least 31 red/green candles visible");
                 }
 
                 // The rightmost candle is normally still forming. Excluding it
@@ -779,7 +1126,8 @@ public final class MainActivity extends Activity {
                 }
                 return new AnalysisResult(decision.direction, decision.strength, candles.size(),
                         decision.flowBias, decision.expiryMinutes, "ELIGIBLE SETUP",
-                        decision.profile, 100,
+                        decision.profile, 100, decision.bullishPoints,
+                        decision.bearishPoints,
                         decision.detail + " • manual next-candle entry • demo only");
             } finally {
                 if (bitmap != source) bitmap.recycle();

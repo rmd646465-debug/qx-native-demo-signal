@@ -8,7 +8,7 @@
         android:usesCleartextTraffic="false"
         android:networkSecurityConfig="@xml/network_security_config"
         android:icon="@drawable/ic_launcher"
-        android:label="QX Structure Pulse Demo"
+        android:label="QX Stable Close Demo"
         android:supportsRtl="true"
         android:theme="@style/Theme.QXAdaptive">
         <activity

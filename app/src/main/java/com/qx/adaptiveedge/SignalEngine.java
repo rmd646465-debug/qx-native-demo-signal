@@ -2,7 +2,6 @@ package com.qx.adaptiveedge;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 
@@ -11,19 +10,17 @@ import java.util.Locale;
  *
  * <p>This version intentionally contains no EMA, MACD, RSI, Bollinger or old
  * confluence rules. It reads candle geometry, detects contextual price-action
- * structures and compares the latest three-candle pulse with earlier local
- * analogues on the same visible currency chart. Scores are setup-quality
- * scores, never claimed win probabilities.</p>
+ * structures. Recent flow can support a setup, but trend/flow alone is never
+ * allowed to create an entry. Scores are setup-quality scores, never claimed
+ * win probabilities.</p>
  */
 final class SignalEngine {
-    static final int MIN_CANDLES = 16;
+    static final int MIN_CANDLES = 30;
     static final int MAX_CANDLES = 64;
 
     static final String SWEEP_PROFILE = "LIQUIDITY SWEEP";
     static final String RETEST_PROFILE = "BREAK + RETEST";
     static final String PULLBACK_PROFILE = "PULLBACK PULSE";
-    static final String FLOW_PROFILE = "STRUCTURE FLOW";
-    static final String ANALOG_PROFILE = "LOCAL PATTERN MATCH";
 
     static final class CandlePoint {
         final float x;
@@ -85,33 +82,6 @@ final class SignalEngine {
             this.profile = profile;
             this.readiness = readiness;
             this.detail = detail;
-        }
-    }
-
-    private static final class AnalogCandidate {
-        final float distance;
-        final int outcome;
-
-        AnalogCandidate(float distance, int outcome) {
-            this.distance = distance;
-            this.outcome = outcome;
-        }
-    }
-
-    private static final class AnalogResult {
-        final int direction;
-        final int horizon;
-        final float agreement;
-        final float averageDistance;
-        final int samples;
-
-        AnalogResult(int direction, int horizon, float agreement,
-                     float averageDistance, int samples) {
-            this.direction = direction;
-            this.horizon = horizon;
-            this.agreement = agreement;
-            this.averageDistance = averageDistance;
-            this.samples = samples;
         }
     }
 
@@ -212,7 +182,6 @@ final class SignalEngine {
                 && colourBalance6 <= -2 && last.close < last.open
                 && lastBodyRatio >= 0.32f && lastCloseLocation <= 0.40f;
 
-        AnalogResult analog = bestAnalog(candles, unit);
         int bullish = 0;
         int bearish = 0;
         if (move3 > 0.18f) bullish += 2;
@@ -237,19 +206,16 @@ final class SignalEngine {
         else if (lastUpperWick > Math.max(lastLowerWick * 1.35f, unit * 0.16f)
                 && lastCloseLocation <= 0.45f) bearish += 1;
 
-        if (bullishSweep) bullish += 4;
-        if (bearishSweep) bearish += 4;
-        if (bullishRetest) bullish += 4;
-        if (bearishRetest) bearish += 4;
-        if (bullishPullback) bullish += 3;
-        if (bearishPullback) bearish += 3;
-        if (bullishFlow) bullish += 2;
-        if (bearishFlow) bearish += 2;
-        if (analog.direction > 0 && analog.agreement >= 0.42f) {
-            bullish += analog.agreement >= 0.66f ? 3 : 2;
-        } else if (analog.direction < 0 && analog.agreement >= 0.42f) {
-            bearish += analog.agreement >= 0.66f ? 3 : 2;
-        }
+        if (bullishSweep) bullish += 5;
+        if (bearishSweep) bearish += 5;
+        if (bullishRetest) bullish += 5;
+        if (bearishRetest) bearish += 5;
+        if (bullishPullback) bullish += 4;
+        if (bearishPullback) bearish += 4;
+        // Directional flow is supporting evidence only. It cannot select a
+        // profile or turn an incomplete chart shape into a trade signal.
+        if (bullishFlow) bullish += 1;
+        if (bearishFlow) bearish += 1;
 
         int flowBias = calculateFlowBias(move3, move6, move12, efficiency6,
                 colourBalance6);
@@ -257,10 +223,6 @@ final class SignalEngine {
         boolean volatilityShock = lastRangeRatio > 3.15f
                 || volatilityExpansion > 3.00f;
         boolean randomWhipsaw = changeRate8 > 0.82f && efficiency6 < 0.20f;
-        boolean strongAnalogConflict = analog.agreement >= 0.72f
-                && ((analog.direction > 0 && bearish - bullish >= 3)
-                || (analog.direction < 0 && bullish - bearish >= 3));
-
         int lead = Math.abs(bullish - bearish);
         int winning = Math.max(bullish, bearish);
         int directionSign = bullish > bearish ? 1 : bearish > bullish ? -1 : 0;
@@ -277,40 +239,33 @@ final class SignalEngine {
                 || (directionSign < 0 && bearishPullback)) {
             profile = PULLBACK_PROFILE;
             contextualSetup = true;
-        } else if ((directionSign > 0 && bullishFlow)
-                || (directionSign < 0 && bearishFlow)) {
-            profile = FLOW_PROFILE;
-            contextualSetup = true;
-        } else if (analog.direction == directionSign && analog.agreement >= 0.68f) {
-            profile = ANALOG_PROFILE;
         }
 
-        boolean eligible = directionSign != 0 && winning >= 7 && lead >= 3
-                && (contextualSetup || (ANALOG_PROFILE.equals(profile)
-                && winning >= 8 && lead >= 4));
+        boolean bullishChase = directionSign > 0 && move6 > 1.80f
+                && efficiency6 >= 0.72f && colourBalance6 >= 4
+                && last.close >= highestHigh(candles, size - 7, size) - unit * 0.25f;
+        boolean bearishChase = directionSign < 0 && move6 < -1.80f
+                && efficiency6 >= 0.72f && colourBalance6 <= -4
+                && last.close <= lowestLow(candles, size - 7, size) + unit * 0.25f;
+        boolean eligible = directionSign != 0 && winning >= 9 && lead >= 5
+                && contextualSetup;
         String safetyReason = "";
         if (deadMarket) safetyReason = "flat candle movement";
         else if (volatilityShock) safetyReason = "abnormal range expansion";
         else if (randomWhipsaw) safetyReason = "random colour whipsaw";
-        else if (strongAnalogConflict && !contextualSetup) {
-            safetyReason = "local pattern conflict";
-        }
+        else if (bullishChase || bearishChase) safetyReason = "late entry after extended move";
         if (!safetyReason.isEmpty()) eligible = false;
 
-        String analogLabel = analog.direction == 0 ? "neutral"
-                : (analog.direction > 0 ? "UP" : "DOWN") + " "
-                + analog.horizon + "m/" + Math.round(analog.agreement * 100f) + "%";
         String metrics = "UP " + bullish + " • DOWN " + bearish
                 + " • flow " + signed(flowBias)
                 + " • efficiency " + Math.round(efficiency6 * 100f) + "%"
-                + " • analog " + analogLabel
                 + " • range " + Math.round(volatilityExpansion * 100f) + "%";
 
         int readiness = Math.min(99, 30 + winning * 5 + lead * 4
                 + (contextualSetup ? 8 : 0));
         if (!eligible) {
             String reason = !safetyReason.isEmpty() ? safetyReason
-                    : !contextualSetup && !ANALOG_PROFILE.equals(profile)
+                    : !contextualSetup
                     ? "no complete price-action setup"
                     : "directional edge too small";
             return new Decision("WAIT", 0, flowBias, bullish, bearish, 0,
@@ -318,8 +273,8 @@ final class SignalEngine {
                     readiness, metrics + " • " + reason);
         }
 
-        int expiry = chooseExpiry(profile, size, directionSign, move6, move12,
-                efficiency6, efficiency12, analog);
+        int expiry = chooseExpiry(profile, size, move6, move12,
+                efficiency6, efficiency12);
         int strength = Math.min(94, 49 + winning * 4 + lead * 2
                 + (contextualSetup ? 4 : 0));
         String direction = directionSign > 0 ? "UP" : "DOWN";
@@ -328,98 +283,15 @@ final class SignalEngine {
                 metrics + " • " + profile.toLowerCase(Locale.US));
     }
 
-    private static int chooseExpiry(String profile, int size, int direction,
+    private static int chooseExpiry(String profile, int size,
                                     float move6, float move12,
-                                    float efficiency6, float efficiency12,
-                                    AnalogResult analog) {
+                                    float efficiency6, float efficiency12) {
         if (SWEEP_PROFILE.equals(profile)) return 2;
-        if (ANALOG_PROFILE.equals(profile)) return analog.horizon;
-        boolean localSupport = analog.direction == direction && analog.agreement >= 0.45f;
-        if (size >= 34 && Math.abs(move12) >= 1.45f && efficiency12 >= 0.62f
-                && localSupport) return 5;
         if (RETEST_PROFILE.equals(profile)) return 3;
+        if (PULLBACK_PROFILE.equals(profile) && size >= 40
+                && Math.abs(move12) >= 1.45f && efficiency12 >= 0.65f) return 5;
         if (Math.abs(move6) >= 0.78f && efficiency6 >= 0.52f) return 3;
         return 2;
-    }
-
-    private static AnalogResult bestAnalog(List<CandlePoint> candles, float unit) {
-        AnalogResult best = new AnalogResult(0, 2, 0f, Float.MAX_VALUE, 0);
-        for (int horizon : new int[]{2, 3, 5}) {
-            AnalogResult result = analogForHorizon(candles, unit, horizon);
-            float quality = result.agreement / (1f + result.averageDistance * 0.18f);
-            float bestQuality = best.agreement / (1f + best.averageDistance * 0.18f);
-            if (result.samples >= 4 && quality > bestQuality) best = result;
-        }
-        return best;
-    }
-
-    private static AnalogResult analogForHorizon(List<CandlePoint> candles,
-                                                  float unit, int horizon) {
-        int size = candles.size();
-        int currentEnd = size - 1;
-        List<AnalogCandidate> candidates = new ArrayList<>();
-        for (int end = 3; end + horizon < currentEnd; end++) {
-            float distance = patternDistance(candles, end, currentEnd, unit);
-            float outcomeMove = candles.get(end + horizon).close
-                    - candles.get(end).close;
-            int outcome = outcomeMove > unit * 0.04f ? 1
-                    : outcomeMove < -unit * 0.04f ? -1 : 0;
-            candidates.add(new AnalogCandidate(distance, outcome));
-        }
-        Collections.sort(candidates, Comparator.comparingDouble(c -> c.distance));
-        int count = Math.min(6, candidates.size());
-        float weightedVote = 0f;
-        float totalWeight = 0f;
-        float distanceSum = 0f;
-        int nonFlat = 0;
-        for (int i = 0; i < count; i++) {
-            AnalogCandidate candidate = candidates.get(i);
-            float weight = 1f / (0.35f + candidate.distance);
-            weightedVote += weight * candidate.outcome;
-            totalWeight += weight;
-            distanceSum += candidate.distance;
-            if (candidate.outcome != 0) nonFlat++;
-        }
-        if (count < 4 || totalWeight <= 0f || nonFlat < 3) {
-            return new AnalogResult(0, horizon, 0f, Float.MAX_VALUE, count);
-        }
-        float agreement = Math.abs(weightedVote) / totalWeight;
-        int direction = weightedVote > 0f ? 1 : weightedVote < 0f ? -1 : 0;
-        return new AnalogResult(direction, horizon, agreement,
-                distanceSum / count, count);
-    }
-
-    private static float patternDistance(List<CandlePoint> candles, int pastEnd,
-                                         int currentEnd, float unit) {
-        float distance = 0f;
-        for (int offset = 0; offset < 3; offset++) {
-            int pastIndex = pastEnd - 2 + offset;
-            int currentIndex = currentEnd - 2 + offset;
-            CandlePoint past = candles.get(pastIndex);
-            CandlePoint current = candles.get(currentIndex);
-            float pastRange = Math.max(1f, past.height);
-            float currentRange = Math.max(1f, current.height);
-            float pastBody = (past.close - past.open) / pastRange;
-            float currentBody = (current.close - current.open) / currentRange;
-            distance += Math.abs(pastBody - currentBody) * 1.20f;
-            distance += Math.abs(closeLocation(past) - closeLocation(current)) * 0.80f;
-            distance += Math.abs(clamp(past.height / unit, 0f, 2.5f)
-                    - clamp(current.height / unit, 0f, 2.5f)) * 0.45f;
-            if (pastIndex > 0 && currentIndex > 0) {
-                float pastDelta = clamp((past.close - candles.get(pastIndex - 1).close)
-                        / unit, -2f, 2f);
-                float currentDelta = clamp((current.close
-                        - candles.get(currentIndex - 1).close) / unit, -2f, 2f);
-                distance += Math.abs(pastDelta - currentDelta) * 0.65f;
-            }
-        }
-        float pastContext = (candles.get(pastEnd).close
-                - candles.get(Math.max(0, pastEnd - 4)).close) / unit;
-        float currentContext = (candles.get(currentEnd).close
-                - candles.get(Math.max(0, currentEnd - 4)).close) / unit;
-        distance += Math.abs(clamp(pastContext, -3f, 3f)
-                - clamp(currentContext, -3f, 3f)) * 0.55f;
-        return distance;
     }
 
     private static int structureDirection(List<CandlePoint> candles, float unit) {

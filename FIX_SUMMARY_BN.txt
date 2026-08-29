@@ -1,75 +1,113 @@
-QX STRUCTURE PULSE DEMO v1.1 — বাংলা সারসংক্ষেপ
-=================================================
+QX STABLE CLOSE DEMO v1.2 — বাংলা সারসংক্ষেপ
+================================================
 
-নতুন version: 1.1.0-structure-pulse
 App ID: com.qx.adaptiveedge
-App name: QX Structure Pulse Demo
+Version: 1.2.0-stable-close (versionCode 3)
+Build artifact: QX-Stable-Close-Demo-APK-v3
 
-ফোনে আগের original app থাকবে। এই App ID শুধু Adaptive app-এর update হিসেবে
-install হবে।
+সতর্কতা
+--------
+এটি Quotex DEMO chart-এর analysis-only app। এটি কোনো trade button চাপবে না,
+order করবে না এবং লাভ বা win rate নিশ্চিত করে না। v1.1 আর ব্যবহার করবেন না।
 
-পুরোনো strategy সম্পূর্ণ বাদ
+ভিডিওতে যে bug নিশ্চিত হয়েছে
 ----------------------------
-- EMA বাদ
-- MACD বাদ
-- RSI বাদ
-- Bollinger/confluence বাদ
-- পুরোনো TREND + MOMENTUM বাদ
-- পুরোনো BREAKOUT + ROC বাদ
-- পুরোনো RANGE REVERSAL বাদ
-- দুই-frame confirmation বাদ
-- PLEASE WAIT 1/2 MIN countdown বাদ
+একই USD/COP OTC chart-এ কয়েক সেকেন্ডের মধ্যে detected candle count ছিল
+28 → 29 → 31 → 30 → 28। ফলও ছিল:
+WAIT → DOWN 2 MIN → DOWN 3 MIN → WAIT → DOWN 2 MIN।
 
-নতুন Structure Pulse engine
----------------------------
+এ সময় নতুন 1-minute candle close হয়নি। অর্থাৎ এটি market reversal নয়; screen
+pixel থেকে candle আলাদা করার অস্থিরতা। পুরোনো এক-frame Structure Flow engine
+এই ভুল ফল সরাসরি signal হিসেবে দেখাত। ব্যবহারকারীর report অনুযায়ী সেই version-এর
+৫টি demo trade-ই loss হয়েছে। তাই v1.1 বাতিল।
+
+v1.2-এর closed-candle নিয়ম
+--------------------------
+1. Quotex chart 1 MIN করতে হবে।
+2. অন্তত 31টি red/green candle দৃশ্যমান রাখতে হবে:
+   30 closed candle + ডান পাশের 1টি forming candle।
+3. minute boundary-এর 0.9–8 second-এর মধ্যে live analysis শুরু হবে।
+4. forming candle strategy থেকে বাদ থাকবে।
+5. 450 ms ব্যবধানে chart তিনবার পড়বে।
+6. তিনবারের candle count, UP/DOWN/WAIT, setup এবং 2/3/5-minute expiry এক হতে হবে।
+7. setup score-এর পার্থক্য 5-এর বেশি বা flow bias-এর পার্থক্য 8-এর বেশি হলেও
+   WAIT — UNSTABLE CHART READ দেখাবে।
+8. candle চলার মাঝখানে কোনো নতুন directional signal দেবে না।
+
+কোন strategy signal দিতে পারবে
+------------------------------
+শুধু তিনটি সম্পূর্ণ price-action context:
+
 1. LIQUIDITY SWEEP
-   Local high/low ভেঙে আবার level-এর ভিতরে close এবং rejection wick হলে।
+   Local high/low sweep করার পরে price আবার level-এর ভিতরে rejection close।
+   Expiry: 2 MIN।
 
 2. BREAK + RETEST
-   Closed candle structure level ভাঙার পর পরের closed candle level ধরে রাখলে।
+   Closed candle দিয়ে structure break, তারপর পরের closed candle-এ retest hold।
+   Expiry: 3 MIN।
 
 3. PULLBACK PULSE
-   Directional move, ছোট বিপরীত pullback এবং resumption candle হলে।
+   পরিষ্কার directional leg, নিয়ন্ত্রিত বিপরীত pullback এবং resumption close।
+   Structure persistence অনুযায়ী expiry: 2 / 3 / 5 MIN।
 
-4. STRUCTURE FLOW
-   Recent displacement, candle-flow efficiency, higher-high/higher-low অথবা
-   lower-high/lower-low, body quality ও close location বিশ্লেষণ করে।
+EMA, MACD, RSI, Bollinger, পুরোনো confluence, Structure Flow signal এবং Local
+Pattern Match signal রাখা হয়নি। Flow শুধু supporting point; একা signal দিতে
+পারবে না। Complete setup, কমপক্ষে 9 primary point এবং বিপরীত দিকের চেয়ে
+কমপক্ষে 5 point lead প্রয়োজন।
 
-5. LOCAL PATTERN MATCH
-   একই currency-র visible chart-এ আগের কাছাকাছি three-candle pattern খুঁজে
-   2/3/5 candle পরের ফল আলাদাভাবে compare করে।
+Hard WAIT filter
+----------------
+- Flat/অতি ধীর market
+- Abnormal volatility/range shock
+- Random colour whipsaw
+- অনেক দূর একদিকে যাওয়ার পরে late/chasing entry
+- 30টি closed candle না থাকা
+- তিনটি chart read-এর অমিল
+- Complete setup না থাকা
 
-Signal behavior
+একবার signal দিলে কী হবে
+------------------------
+Verified signal এলে currency + direction + setup + expiry lock হবে। 2/3/5-minute
+expiry শেষ হওয়ার আগে একই currency-তে UP থেকে DOWN, DOWN থেকে UP, minutes change
+বা WAIT হবে না। প্রতিটি currency-র lock আলাদা।
+
+Signal panel-এ WHY UP/DOWN দেখাবে। সেখানে setup-এর সহজ কারণ, UP point বনাম
+DOWN point, closed-candle সংখ্যা এবং 3/3 STABLE লেখা থাকবে। এটি app কী দেখে
+signal দিয়েছে তার audit explanation; win নিশ্চিত হওয়ার প্রমাণ নয়।
+
+AUTO SCAN
+---------
+AUTO SCAN tap করলে পরের 1-minute candle close-এর জন্য arm হবে। সর্বোচ্চ 4টি
+দৃশ্যমান high-payout currency তিনবার করে পড়বে। Fresh-entry window শেষ হয়ে গেলে
+late signal না দিয়ে WAIT দেখাবে। কোনো trade control স্পর্শ করবে না।
+
+DEMO result record
+------------------
+- Expiry শেষ হলে MARK WIN অথবা MARK LOSS চাপতে হবে।
+- একই signal একবারের বেশি mark করা যাবে না।
+- Total W-L, observed percentage এবং loss streak ফোনে save থাকবে।
+- টানা 3টি marked loss হলে RISK STOP হবে এবং analysis/Auto Scan বন্ধ হবে।
+- RESET LOG দিলে record clear হয়ে demo testing আবার শুরু হবে।
+- কোনো recovery bet, Martingale বা loss-এর পরে amount বাড়ানোর নির্দেশ থাকবে না।
+
+এই record ব্যবহারকারী নিজে mark করবেন; এটি independently verified win rate নয়।
+কমপক্ষে 100টি demo signal record করার আগে real-money ব্যবহার করা যাবে না। 100
+trade-এর ফলও ভবিষ্যতের লাভের নিশ্চয়তা নয়। Martingale ব্যবহার করবেন না।
+
+Test করা হয়েছে
 ---------------
-- এক snapshot-এই UP/DOWN/WAIT সিদ্ধান্ত।
-- Signal হলে সঙ্গে সঙ্গে UP/DOWN এবং 2 MIN / 3 MIN / 5 MIN দেখাবে।
-- Setup দুর্বল হলে সঙ্গে সঙ্গে WAIT — NO EDGE NOW দেখাবে।
-- কোনো future countdown থাকবে না।
-- Rightmost forming candle বাদ দিয়ে শুধু closed candle analyze করবে।
-- অন্তত 17টি candle দৃশ্যমান রাখতে হবে: 16 closed + 1 forming।
-- Auto Scan-এ প্রতি currency-তে এক snapshot ব্যবহার হবে।
+- UP/DOWN mirror symmetry
+- Liquidity Sweep 2m
+- Break + Retest 3m
+- Pullback Pulse 2m/3m/5m
+- Flow-only chart = WAIT
+- Late-entry = WAIT
+- Flat market ও volatility shock = WAIT
+- 30টির কম closed candle reject
 
-Expiry
-------
-- 2 MIN: liquidity sweep বা controlled short structure।
-- 3 MIN: break/retest বা stronger six-candle continuation।
-- 5 MIN: কমপক্ষে 34 closed candle, persistent 12-candle structure এবং
-  same-direction local-pattern support।
-
-Safety WAIT
------------
-- একেবারে flat movement
-- abnormal range/volatility expansion
-- random red/green whipsaw
-- direction-এর পরিষ্কার edge না থাকা
-
-গুরুত্বপূর্ণ সত্য
----------------
-SETUP 0-100 কোনো win-rate নয়। Screenshot-এর candle geometry দেখে কোনো system
-নিশ্চিত profit দিতে পারে না। Demo account-এ সব signal লিখে result যাচাই করতে
-হবে। Martingale ব্যবহার করা যাবে না। App কোনো trade/order click করে না।
-
-Build artifact
---------------
-GitHub Actions → Build QX Structure Pulse Demo APK →
-QX-Structure-Pulse-Demo-APK-v2
+গুরুত্বপূর্ণ সীমাবদ্ধতা
+----------------------
+App raw broker OHLC data, order book, institutional flow বা news feed পায় না;
+rendered chart pixel পড়ে। OTC quotation কীভাবে তৈরি হয়েছে তাও app যাচাই করতে
+পারে না। তাই কোনো “বিদেশি secret strategy”, AI বা bot ভবিষ্যৎ candle নিশ্চিতভাবে
+জানতে পারে—এমন দাবি সত্য নয়। এটি কেবল কঠোর demo testing tool।

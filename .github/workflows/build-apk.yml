@@ -1,4 +1,4 @@
-name: Build QX Structure Pulse Demo APK
+name: Build QX Stable Close Demo APK
 
 on:
   workflow_dispatch:
@@ -33,11 +33,13 @@ jobs:
         with:
           gradle-version: "8.10.2"
 
-      - name: Verify new price-structure engine
+      - name: Verify contextual closed-candle engine
         run: |
           mkdir -p build/engine-test
           javac -d build/engine-test \
             app/src/main/java/com/qx/adaptiveedge/SignalEngine.java \
+            app/src/main/java/com/qx/adaptiveedge/SignalStability.java \
+            app/src/main/java/com/qx/adaptiveedge/SignalLockBook.java \
             engine-test/com/qx/adaptiveedge/SignalEngineSelfTest.java
           java -cp build/engine-test com.qx.adaptiveedge.SignalEngineSelfTest
 
@@ -47,7 +49,7 @@ jobs:
       - name: Upload installable APK
         uses: actions/upload-artifact@v4
         with:
-          name: QX-Structure-Pulse-Demo-APK-v2
+          name: QX-Stable-Close-Demo-APK-v3
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 30

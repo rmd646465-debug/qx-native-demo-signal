@@ -1,109 +1,116 @@
-# QX Structure Pulse Demo
+# QX Stable Close Demo
 
-Android demo-only chart reader that displays `UP`, `DOWN`, or `WAIT` from the
-currently rendered Quotex candle chart. Version `1.1.0-structure-pulse` keeps the
-separate application ID `com.qx.adaptiveedge`, so the original native demo app
-is not replaced.
+Android analysis-only chart reader that displays `UP`, `DOWN`, or `WAIT` from
+the currently rendered Quotex demo candlestick chart. Version
+`1.2.0-stable-close` keeps the separate application ID
+`com.qx.adaptiveedge` and never presses a trade button or places an order.
 
-## What changed in v1.1
+## Why v1.1 was replaced
 
-The previous EMA, MACD, RSI, breakout/ROC, range-reversal, multi-indicator
-confluence and two-frame confirmation engine was removed. The app no longer
-shows a one- or two-minute signal countdown.
+A 30-second user recording showed the same USD/COP OTC chart being detected as
+28, 29, 31, 30 and 28 candles on consecutive seconds. The displayed result
+changed `WAIT -> DOWN 2 MIN -> DOWN 3 MIN -> WAIT -> DOWN 2 MIN` even though no
+new one-minute candle had closed. This was pixel-segmentation instability, not
+new market information. The one-snapshot Structure Flow / Local Pattern engine
+also produced late continuation calls and failed the reported five-trade demo
+sample.
 
-Every completed analysis now gives an immediate result from one closed-candle
-snapshot:
+Version 1.1 is deprecated. Fixing the display reversal does not create or prove
+a profitable strategy; v1.2 is built to reject unstable inputs and collect an
+honest demo record.
 
-- `UP • 2/3/5 MIN`;
-- `DOWN • 2/3/5 MIN`; or
-- `WAIT — NO EDGE NOW`, with no countdown.
+## Stable closed-candle gate
 
-The rightmost forming candle remains excluded so a partially formed candle
-cannot repaint an entry decision. At least 17 visible red/green candles are
-needed: 16 closed candles plus the forming candle.
+- The chart must be set to one-minute candles.
+- At least 31 visible red/green candles are required: 30 closed candles plus
+  the rightmost forming candle.
+- Normal analysis starts only 0.9-8 seconds after a minute boundary. Outside
+  that window the result is `WAIT FOR NEXT CLOSED CANDLE`, with no estimated
+  signal countdown.
+- The app captures three chart frames about 450 ms apart.
+- Candle count, direction, profile and expiry must match on all three reads;
+  setup score may vary by at most 5 and flow bias by at most 8.
+- Any disagreement produces `WAIT - UNSTABLE CHART READ` and no direction.
+- The forming rightmost candle is excluded from every strategy calculation.
 
-## New price-structure engine
+## Contextual-only strategy
 
-The engine uses only normalized OHLC candle geometry and current-chart context:
+The old EMA, MACD, RSI, Bollinger, generic confluence, Structure Flow and Local
+Pattern Match signal paths remain removed. Recent direction/efficiency can add
+supporting points, but flow alone cannot issue a signal.
 
-1. **Liquidity Sweep** — a local high/low is swept, then price closes back
-   inside with directional rejection.
-2. **Break + Retest** — a closed candle breaks a local structure level and the
-   next closed candle holds the retest.
-3. **Pullback Pulse** — an efficient directional leg, controlled opposing
-   pullback and a resumption candle.
-4. **Structure Flow** — recent displacement, directional efficiency,
-   higher-high/higher-low or lower-high/lower-low structure, body quality and
-   close location.
-5. **Local Pattern Match** — the latest three-candle pulse is compared with
-   earlier patterns on the same visible currency chart; the closest local
-   analogues vote separately for 2-, 3- and 5-candle outcomes.
+Only three complete price-action contexts are eligible:
 
-Flat movement, abnormal range expansion and random colour whipsaw remain hard
-safety filters. A `SETUP 0-100` value is a rule-quality score, not a claimed win
-probability.
+1. **Liquidity Sweep** - a local high/low is swept and the candle closes back
+   inside with directional rejection. Expiry: 2 minutes.
+2. **Break + Retest** - a closed candle breaks a local structure level and the
+   next closed candle holds the retest. Expiry: 3 minutes.
+3. **Pullback Pulse** - an efficient leg, controlled opposite pullback and a
+   directional resumption close. Expiry: 2, 3 or 5 minutes according to the
+   measured persistence of the closed-candle structure.
 
-## Speed and per-currency behavior
+Eligibility requires a complete context, at least 9 primary points and at least
+a 5-point lead over the opposing direction. Flat movement, abnormal volatility,
+random whipsaw and late entry after an extended one-way move are hard `WAIT`
+filters. `SETUP x/100` is a rule-quality score, not win probability.
 
-- Normal live analysis uses one snapshot; the old second-frame delay is gone.
-- Auto Scan uses one snapshot per visible currency after the chart loads.
-- Each currency is analyzed from its own visible candle history; frames from
-  different currencies are never combined.
-- A strong eligible currency can end Auto Scan early; otherwise the strongest
-  available signal is selected after the scan.
-- If no chart has a complete structure, the best current `WAIT` is shown
-  immediately rather than estimating a future signal time.
+## Per-currency signal lock
 
-## Expiry selection
+Once a verified signal is displayed, its currency, direction, profile and
+2/3/5-minute expiry are locked until that expiry ends. Re-scans cannot reverse
+an active `UP` into `DOWN`, change its minutes, or replace it with `WAIT`.
+Other currencies keep their own independent lock state.
 
-- **2 minutes:** liquidity sweep or controlled short structure.
-- **3 minutes:** break/retest or stronger six-candle continuation.
-- **5 minutes:** at least 34 closed candles, persistent 12-candle structure and
-  supporting same-direction local analogues.
+The locked panel also shows `WHY UP/DOWN`, a plain-language setup reason,
+directional UP-vs-DOWN points, the closed-candle count and `3/3 STABLE`. This is
+an audit trail for what the pixel reader detected, not proof that the outcome
+will win.
+
+Auto Scan is armed for the next one-minute close, checks at most four visible
+high-payout currencies with three reads each, and refuses a directional result
+if the fresh-entry window has already passed. It never touches trade controls.
+
+## Demo result record and risk stop
+
+`MARK WIN` and `MARK LOSS` become valid only after the displayed expiry ends.
+Each signal can be recorded once. The app stores total wins, losses, observed
+demo percentage and the current loss streak on-device. These are user-entered
+results, not independently verified statistics.
+
+After three consecutive marked losses, live analysis and Auto Scan stop. `RESET
+LOG` clears the record and resumes demo testing. Do not use martingale or raise
+the amount after a loss. The app deliberately has no loss-recovery staking
+system because no next trade can be guaranteed to recover an earlier loss.
 
 ## Evidence limits
 
-This design deliberately avoids a promised win rate. Research on intraday FX
-technical rules has found that attractive in-sample rules may fail out of sample,
-and testing many variants increases backtest-overfitting risk. Candlestick
-patterns also have weak predictive evidence when used without market context.
+The app reads rendered screen pixels, not a broker OHLC feed, order book,
+institutional flow or news feed. It cannot establish how an OTC quotation was
+formed and cannot predict a future candle with certainty. A deterministic unit
+test proves code symmetry and safety rules only; it does not prove market win
+rate.
 
-- Quotex short-term chart guide:
-  https://blog.qxbroker.com/updates/fast-moves-quick-results-a-step-by-step-guide-to-short-term-stock-trading/
-- Intraday FX out-of-sample study:
-  https://ideas.repec.org/p/fip/fedlwp/1999-016.html
+Research shows that rules selected from many backtests can look strong in
+sample and fail on unseen data:
+
 - Probability of Backtest Overfitting:
   https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2326253
+- Intraday FX out-of-sample study:
+  https://ideas.repec.org/p/fip/fedlwp/1999-016.html
 - CFTC/SEC binary-options warning:
   https://www.cftc.gov/LearnAndProtect/AdvisoriesAndArticles/fraudadv_binaryoptions.html
+- Quotex FAQ and demo-account description:
+  https://qxbroker.com/en/faq/
 
-The local-pattern component is adaptive but is not a substitute for verified
-out-of-sample demo results. Use the app only to collect a demo trade log before
-judging performance.
+Use only the demo account and record every eligible signal. A 100-trade demo
+sample is still an estimate, not a guarantee; real-money use is not recommended
+on the basis of this app.
 
-## Safe use
+## Build and deterministic checks
 
-1. Use the Quotex demo account only.
-2. Set the chart timeframe to one minute.
-3. Keep at least 17 candles visible.
-4. Enter only after a closed-candle signal appears; do not enter during the
-   forming candle.
-5. Record every signal, including losses. Do not use martingale.
-6. Stop testing a version if the verified demo sample does not beat the payout's
-   break-even win rate after a meaningful sample.
+GitHub Actions uses Java 17 and Android API 35, runs the pure-Java engine test,
+builds the debug APK and uploads `QX-Stable-Close-Demo-APK-v3`.
 
-The app never clicks an amount/direction button and never places an order. It
-does not guarantee profit or platform/legal eligibility in any jurisdiction.
-
-## Build and test
-
-GitHub Actions installs Android API 35 and build-tools 35.0.0, runs the plain
-Java symmetry/safety test, builds the debug APK and uploads
-`QX-Structure-Pulse-Demo-APK-v2`.
-
-The deterministic test checks:
-
-- mirrored UP/DOWN behavior;
-- immediate structure-flow and liquidity-sweep signals;
-- 2-, 3- and 5-minute expiry selection; and
-- flat/whipsaw and abnormal-range `WAIT` filters.
+The deterministic test verifies mirrored UP/DOWN scoring, contextual 2/3/5
+minute expiry selection, rejection of raw trend/flow, late-entry protection,
+flat/abnormal-volatility `WAIT` filters and the 30-closed-candle minimum.
