@@ -51,8 +51,8 @@ public final class MainActivity extends Activity {
             "https://market-qx.pro/en/demo-trade",
             "https://quotex.com/en/demo-trade"
     };
-    private static final long SCAN_INTERVAL_MS = 2500L;
-    private static final long CHART_WARMUP_MS = 4000L;
+    private static final long SCAN_INTERVAL_MS = 1700L;
+    private static final long CHART_WARMUP_MS = 2600L;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final ExecutorService analyzerExecutor = Executors.newSingleThreadExecutor();
@@ -124,7 +124,7 @@ public final class MainActivity extends Activity {
         signalView.setGravity(Gravity.CENTER);
         strengthView = text("Live chart loading…", 11, Color.rgb(171, 183, 201), false);
         strengthView.setGravity(Gravity.CENTER);
-        detailView = text("PRECISION MODE • CLOSED CANDLES • DEMO ONLY", 9, Color.rgb(114, 130, 153), false);
+        detailView = text("ADAPTIVE MODE • CLOSED CANDLES • DEMO ONLY", 9, Color.rgb(114, 130, 153), false);
         detailView.setGravity(Gravity.CENTER);
         signalPanel.addView(signalView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38)));
         signalPanel.addView(strengthView, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(22)));
@@ -288,7 +288,7 @@ public final class MainActivity extends Activity {
         failedMainFrameUrl = "";
         connectionView.setText("LIVE PAGE");
         connectionView.setTextColor(Color.rgb(80, 230, 169));
-        detailView.setText("Official demo page • precision closed-candle analysis");
+        detailView.setText("Official demo page • adaptive eligible-signal analysis");
         refreshCurrentAssetName(null);
     }
 
@@ -370,7 +370,8 @@ public final class MainActivity extends Activity {
                 + "const pm=t.match(/(\\d{2,3})\\s*%/),p=pm?parseInt(pm[1],10):0;"
                 + "const name=pair+(t.includes('OTC')?' (OTC)':'');const old=map.get(pair);"
                 + "if(!old||p>old.payout||(name.includes('OTC')&&!old.name.includes('OTC')))map.set(pair,{name:name,payout:p});}"
-                + "return Array.from(map.values()).filter(x=>x.payout===0||x.payout>=90).map(x=>x.name).slice(0,12);})()";
+                + "return Array.from(map.values()).filter(x=>x.payout===0||x.payout>=90)"
+                + ".sort((a,b)=>b.payout-a.payout).map(x=>x.name).slice(0,8);})()";
     }
 
     private String selectAssetScript(String asset) {
@@ -451,7 +452,7 @@ public final class MainActivity extends Activity {
         }
         String asset = assetQueue.get(assetScanIndex);
         showWait("Scanning " + (assetScanIndex + 1) + "/" + assetQueue.size(),
-                asset + " • three closed-chart confirmations");
+                asset + " • two closed-chart confirmations");
         Consumer<Boolean> selected = ok -> {
             if (!assetScanActive) return;
             if (!ok) {
@@ -482,23 +483,29 @@ public final class MainActivity extends Activity {
             if (!assetScanActive) return;
             mainHandler.postDelayed(() -> captureAndAnalyze(second -> {
                 if (!assetScanActive) return;
-                mainHandler.postDelayed(() -> captureAndAnalyze(third -> {
-                    if (!assetScanActive) return;
-                    AnalysisResult stable = third;
-                    boolean sameDirection = first.direction.equals(second.direction)
-                            && second.direction.equals(third.direction);
-                    boolean sameWaitReason = !"WAIT".equals(first.direction)
-                            || (first.status.equals(second.status)
-                            && second.status.equals(third.status));
-                    if (!sameDirection || !sameWaitReason) {
-                        stable = AnalysisResult.waiting("Unstable setup",
-                                Math.max(first.candles, Math.max(second.candles, third.candles)),
-                                third.rsi, "Three scans did not agree • skipped");
-                    }
-                    assetScanResults.add(new AssetScanResult(asset, stable));
-                    assetScanIndex++;
-                    scanNextAsset();
-                }), SCAN_INTERVAL_MS);
+                AnalysisResult stable = second;
+                boolean sameDirection = first.direction.equals(second.direction);
+                boolean sameWaitReason = !"WAIT".equals(first.direction)
+                        || first.status.equals(second.status);
+                if (!sameDirection || !sameWaitReason) {
+                    stable = AnalysisResult.waiting("Unstable setup",
+                            Math.max(first.candles, second.candles), second.rsi,
+                            "Two scans did not agree • skipped");
+                }
+                assetScanResults.add(new AssetScanResult(asset, stable));
+
+                // A genuinely strong eligible asset can be returned immediately;
+                // weaker candidates are still ranked after the remaining scan.
+                if (!"WAIT".equals(stable.direction) && stable.strength >= 86) {
+                    assetScanActive = false;
+                    assetScanButton.setText("AUTO SCAN");
+                    currentAssetName = asset;
+                    renderResult(stable);
+                    openThenSelectAsset(asset, ignored -> { });
+                    return;
+                }
+                assetScanIndex++;
+                scanNextAsset();
             }), SCAN_INTERVAL_MS);
         });
     }
@@ -610,9 +617,9 @@ public final class MainActivity extends Activity {
             lastCandidate = result.direction;
             candidateStreak = 1;
         }
-        if (candidateStreak < 3) {
+        if (candidateStreak < 2) {
             return AnalysisResult.waiting("Confirming " + result.direction, result.candles,
-                    result.rsi, result.detail + " • need 3 stable scans");
+                    result.rsi, result.detail + " • need 2 stable scans");
         }
         return result;
     }
@@ -746,7 +753,7 @@ public final class MainActivity extends Activity {
                 List<SignalEngine.CandlePoint> detected = extractCandles(bitmap);
                 if (detected.size() < SignalEngine.MIN_CANDLES + 1) {
                     return AnalysisResult.waiting("Chart not ready", detected.size(), 0,
-                            "Keep at least 25 red/green candles visible");
+                            "Keep at least 21 red/green candles visible");
                 }
 
                 // The rightmost candle is normally still forming. Excluding it
@@ -768,7 +775,7 @@ public final class MainActivity extends Activity {
                 SignalEngine.Decision decision = SignalEngine.analyze(candles);
 
                 if ("WAIT".equals(decision.direction)) {
-                    return AnalysisResult.waiting("No 10-point confluence", candles.size(), decision.rsi,
+                    return AnalysisResult.waiting("No 9-point confluence", candles.size(), decision.rsi,
                             decision.detail + " • filters disagree");
                 }
                 return new AnalysisResult(decision.direction, decision.strength, candles.size(),

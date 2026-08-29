@@ -124,3 +124,17 @@ v3.1 PRECISION + CLOSED-CANDLE UPDATE
   choppy, shock ও trend conflict হলে WAIT দেখায়।
 - Asset list থেকে payout পড়া গেলে AUTO SCAN ৯০% বা বেশি payout-কে অগ্রাধিকার দেয়।
 - লক্ষ্য false signal কমানো; কোনো নির্দিষ্ট win rate বা profit নিশ্চিত নয়।
+
+v3.2 ADAPTIVE ELIGIBLE-SIGNAL UPDATE
+====================================
+
+- Signal খুব দেরি হওয়ার মূল bottleneck কমানো হয়েছে: এখন ডান পাশের forming
+  candle বাদ দিয়ে ২০টি closed candle (মোট ২১টি visible) analysis করে।
+- ১০/১৫ ও ৫-point lead-এর বদলে balanced ৯/১৫ ও ৪-point lead; তবে তিনটি trend
+  slope, recent candle direction, RSI, trend efficiency এবং আগের সব WAIT filter
+  এখনও বাধ্যতামূলক।
+- Current chart ও AUTO SCAN-এ এক frame নয়, দুইটি matching frame লাগবে।
+- AUTO SCAN payout বেশি থেকে কম সাজিয়ে সর্বোচ্চ ৮টি visible currency দেখে;
+  ৮৬+ stable setup পেলে সঙ্গে সঙ্গে সেই currency ও signal দেখায়।
+- Choppy, low-volatility, shock, conflict, overextended, late বা oversized candle
+  হলে WAIT থাকবে। কোনো hack, trade click, credential access বা win guarantee নেই।

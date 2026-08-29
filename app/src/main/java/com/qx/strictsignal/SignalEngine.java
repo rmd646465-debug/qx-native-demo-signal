@@ -10,7 +10,7 @@ import java.util.List;
  * A score is setup strength, not a claimed probability of winning.</p>
  */
 final class SignalEngine {
-    static final int MIN_CANDLES = 24;
+    static final int MIN_CANDLES = 20;
     static final int MAX_CANDLES = 45;
     static final int MAX_SCORE = 15;
 
@@ -152,12 +152,12 @@ final class SignalEngine {
 
         int net = bullish - bearish;
         String direction = "WAIT";
-        if (bullish >= 10 && net >= 5 && shortSlope > 0.04f
-                && mediumSlope > 0.035f && longSlope > 0.02f
+        if (bullish >= 9 && net >= 4 && shortSlope > 0.04f
+                && mediumSlope > 0.035f && longSlope > 0.025f
                 && recentColorBalance >= 1 && trendEfficiency >= 0.31f) {
             direction = "UP";
-        } else if (bearish >= 10 && net <= -5 && shortSlope < -0.04f
-                && mediumSlope < -0.035f && longSlope < -0.02f
+        } else if (bearish >= 9 && net <= -4 && shortSlope < -0.04f
+                && mediumSlope < -0.035f && longSlope < -0.025f
                 && recentColorBalance <= -1 && trendEfficiency >= 0.31f) {
             direction = "DOWN";
         }

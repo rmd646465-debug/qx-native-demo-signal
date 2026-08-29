@@ -118,6 +118,23 @@ create a bearish-only bias. Version 2:
   from the platform list. The changes are designed to reduce false positives;
   they do not establish or guarantee a win rate.
 
+## Version 3.2 adaptive eligible-signal update
+
+- Reduces the minimum from 24 to 20 closed candles (21 visible including the
+  still-forming candle), while continuing to exclude that forming candle.
+- Uses adaptive 9/15 directional confluence with a four-point lead. Short,
+  medium and long trend alignment, recent candle agreement, RSI, trend
+  efficiency and all v3.1 safety filters are still mandatory.
+- Requires two matching rendered frames instead of three, reducing current-chart
+  confirmation time without accepting a single-frame signal.
+- AUTO SCAN sorts readable payouts high-to-low, checks up to eight visible/open
+  assets, uses two frames per asset and returns an eligible 86+ setup immediately.
+  If no such asset exists it completes the scan and ranks the best valid result.
+- No signal is forced: choppy, low-volatility, shock, trend-conflict,
+  overextended, late-entry or oversized-candle setups remain WAIT.
+- This is legal on-device visual technical analysis, not an exploit, hidden
+  Quotex API, credential reader, auto-trader or guaranteed-profit system.
+
 ## What it does
 
 - Shows the full official Quotex demo page inside the Android app, including
