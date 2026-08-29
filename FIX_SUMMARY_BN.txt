@@ -1,73 +1,75 @@
-QX ADAPTIVE DEMO SIGNAL v1.0 — বাংলা সারসংক্ষেপ
-================================================
+QX STRUCTURE PULSE DEMO v1.1 — বাংলা সারসংক্ষেপ
+=================================================
 
-এটি আগের APK-এর update নয়
---------------------------
-- নতুন project/repository: qx-adaptive-demo-signal
-- নতুন App ID: com.qx.adaptiveedge
-- নতুন app name: QX Adaptive Demo Signal
-- তাই আগের QX Native Demo Signal নষ্ট বা replace হবে না; দুটো পাশাপাশি install হবে।
+নতুন version: 1.1.0-structure-pulse
+App ID: com.qx.adaptiveedge
+App name: QX Structure Pulse Demo
 
-একেক currency-তে একেক analysis
---------------------------------
-একটি fixed formula সব chart-এ চালানো হয় না। দৃশ্যমান chart-এর অবস্থা বুঝে engine
-স্বয়ংক্রিয়ভাবে নিচের profile বেছে নেয়:
+ফোনে আগের original app থাকবে। এই App ID শুধু Adaptive app-এর update হিসেবে
+install হবে।
 
-1. TREND + MOMENTUM
-   - short/medium/long regression trend
-   - EMA alignment, MACD impulse, RSI, ROC
-   - candle balance ও trend efficiency
+পুরোনো strategy সম্পূর্ণ বাদ
+----------------------------
+- EMA বাদ
+- MACD বাদ
+- RSI বাদ
+- Bollinger/confluence বাদ
+- পুরোনো TREND + MOMENTUM বাদ
+- পুরোনো BREAKOUT + ROC বাদ
+- পুরোনো RANGE REVERSAL বাদ
+- দুই-frame confirmation বাদ
+- PLEASE WAIT 1/2 MIN countdown বাদ
 
-2. BREAKOUT + ROC
-   - আগের range break
-   - controlled volatility expansion
-   - trend এবং momentum একই direction
+নতুন Structure Pulse engine
+---------------------------
+1. LIQUIDITY SWEEP
+   Local high/low ভেঙে আবার level-এর ভিতরে close এবং rejection wick হলে।
 
-3. RANGE REVERSAL
-   - range-এর upper/lower edge
-   - RSI ও rolling-mean deviation
-   - multi-candle turn এবং wick rejection
+2. BREAK + RETEST
+   Closed candle structure level ভাঙার পর পরের closed candle level ধরে রাখলে।
 
-4. WAIT
-   - choppy, low-volatility, volatility shock
-   - trend conflict, late entry, oversized candle
-   - incomplete বা দুর্বল confluence
+3. PULLBACK PULSE
+   Directional move, ছোট বিপরীত pullback এবং resumption candle হলে।
 
-প্রতি currency-র confirmation state আলাদা। দুই currency-র frame কখনো মিশবে না।
+4. STRUCTURE FLOW
+   Recent displacement, candle-flow efficiency, higher-high/higher-low অথবা
+   lower-high/lower-low, body quality ও close location বিশ্লেষণ করে।
 
-Signal ও অপেক্ষার নিয়ম
-----------------------
-- যোগ্য setup একই currency-তে পরপর ২ frame মিললে দ্রুত signal দেখাবে।
-- Signal-এর পাশেই UP/DOWN এবং 2 MIN / 3 MIN / 5 MIN থাকবে।
-- Developing setup হলে PLEASE WAIT ~1 MIN বা ~2 MIN এবং live seconds দেখাবে।
-- Estimate শেষ হলেও signal নিশ্চিত নয়; chart দুর্বল থাকলে WAIT-ই থাকবে।
-- দুর্বল chart-এ জোর করে signal বানাবে না।
+5. LOCAL PATTERN MATCH
+   একই currency-র visible chart-এ আগের কাছাকাছি three-candle pattern খুঁজে
+   2/3/5 candle পরের ফল আলাদাভাবে compare করে।
 
-2/3/5 মিনিট আলাদা কেন
-----------------------
-- 2 MIN: normal eligible setup বা range reversal।
-- 3 MIN: কমপক্ষে 29 closed candle + stronger lead + persistent trend।
-- 5 MIN: কমপক্ষে 38 closed candle + আরও শক্ত long-horizon trend ও efficiency।
-- শুধু setup score বেশি হলেই 3/5 মিনিট হবে না।
+Signal behavior
+---------------
+- এক snapshot-এই UP/DOWN/WAIT সিদ্ধান্ত।
+- Signal হলে সঙ্গে সঙ্গে UP/DOWN এবং 2 MIN / 3 MIN / 5 MIN দেখাবে।
+- Setup দুর্বল হলে সঙ্গে সঙ্গে WAIT — NO EDGE NOW দেখাবে।
+- কোনো future countdown থাকবে না।
+- Rightmost forming candle বাদ দিয়ে শুধু closed candle analyze করবে।
+- অন্তত 17টি candle দৃশ্যমান রাখতে হবে: 16 closed + 1 forming।
+- Auto Scan-এ প্রতি currency-তে এক snapshot ব্যবহার হবে।
 
-AUTO SCAN
----------
-- Quotex list-এ বর্তমানে visible/open সর্বোচ্চ 12টি currency scan করে।
-- readable payout বেশি হলে আগে দেখে।
-- শক্ত eligible currency পেলে পুরো list শেষ না করেই signal দেখায়।
-- Signal না পেলে সবচেয়ে কাছাকাছি developing currency-তে WAIT ও 1/2 minute estimate দেখায়।
-- কখনো amount, UP/DOWN trade button বা order touch করে না।
+Expiry
+------
+- 2 MIN: liquidity sweep বা controlled short structure।
+- 3 MIN: break/retest বা stronger six-candle continuation।
+- 5 MIN: কমপক্ষে 34 closed candle, persistent 12-candle structure এবং
+  same-direction local-pattern support।
 
-ব্যবহারের আগে
-------------
-1. Quotex DEMO account ব্যবহার করুন।
-2. chart timeframe 1 minute রাখুন।
-3. অন্তত 21টি red/green candle দৃশ্যমান রাখুন।
-4. Setup score win probability নয়।
-5. কোনো profit, 8/10 win বা guaranteed signal দাবি করা হয়নি।
-6. Real money ব্যবহার করবেন না; আগে কমপক্ষে 100টি forward demo result লিখে যাচাই করুন।
+Safety WAIT
+-----------
+- একেবারে flat movement
+- abnormal range/volatility expansion
+- random red/green whipsaw
+- direction-এর পরিষ্কার edge না থাকা
 
-APK build
----------
-GitHub Actions → Build QX Adaptive Demo APK → successful run →
-Artifacts → QX-Adaptive-Demo-APK-v1 → app-debug.apk
+গুরুত্বপূর্ণ সত্য
+---------------
+SETUP 0-100 কোনো win-rate নয়। Screenshot-এর candle geometry দেখে কোনো system
+নিশ্চিত profit দিতে পারে না। Demo account-এ সব signal লিখে result যাচাই করতে
+হবে। Martingale ব্যবহার করা যাবে না। App কোনো trade/order click করে না।
+
+Build artifact
+--------------
+GitHub Actions → Build QX Structure Pulse Demo APK →
+QX-Structure-Pulse-Demo-APK-v2

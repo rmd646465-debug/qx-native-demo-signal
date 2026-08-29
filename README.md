@@ -1,105 +1,109 @@
-# QX Adaptive Demo Signal
+# QX Structure Pulse Demo
 
-An Android **demo-only learning tool** that reads the currently rendered Quotex candle chart on-device and shows `UP`, `DOWN`, or `WAIT`. This is a completely separate application from `qx-native-demo-signal`:
+Android demo-only chart reader that displays `UP`, `DOWN`, or `WAIT` from the
+currently rendered Quotex candle chart. Version `1.1.0-structure-pulse` keeps the
+separate application ID `com.qx.adaptiveedge`, so the original native demo app
+is not replaced.
 
-- new repository/project name: `qx-adaptive-demo-signal`
-- new Android application ID: `com.qx.adaptiveedge`
-- new app label: `QX Adaptive Demo Signal`
-- version starts at `1.0.0-adaptive-regime`
+## What changed in v1.1
 
-The old app and this app can be installed side-by-side.
+The previous EMA, MACD, RSI, breakout/ROC, range-reversal, multi-indicator
+confluence and two-frame confirmation engine was removed. The app no longer
+shows a one- or two-minute signal countdown.
 
-## What is different
+Every completed analysis now gives an immediate result from one closed-candle
+snapshot:
 
-### Chart-regime adaptive analysis
+- `UP • 2/3/5 MIN`;
+- `DOWN • 2/3/5 MIN`; or
+- `WAIT — NO EDGE NOW`, with no countdown.
 
-The app does not force one formula onto every currency. Each visible currency is analyzed independently and the engine chooses one of these profiles from that chart:
+The rightmost forming candle remains excluded so a partially formed candle
+cannot repaint an entry decision. At least 17 visible red/green candles are
+needed: 16 closed candles plus the forming candle.
 
-1. **TREND + MOMENTUM** — multi-window regression, EMA alignment, MACD impulse, RSI, rate of change, candle balance and trend efficiency.
-2. **BREAKOUT + ROC** — channel break, controlled volatility expansion, multi-window trend agreement and momentum confirmation.
-3. **RANGE REVERSAL** — range location, RSI, deviation from the rolling mean, multi-candle turn and wick rejection.
-4. **WAIT profiles** — low volatility, erratic/choppy flow, volatility shock, conflicting trend, oversized candle, late entry or incomplete confluence.
+## New price-structure engine
 
-Every bullish condition has an equivalent mirrored bearish condition. A deterministic test verifies UP/DOWN symmetry.
+The engine uses only normalized OHLC candle geometry and current-chart context:
 
-### Per-currency state
+1. **Liquidity Sweep** — a local high/low is swept, then price closes back
+   inside with directional rejection.
+2. **Break + Retest** — a closed candle breaks a local structure level and the
+   next closed candle holds the retest.
+3. **Pullback Pulse** — an efficient directional leg, controlled opposing
+   pullback and a resumption candle.
+4. **Structure Flow** — recent displacement, directional efficiency,
+   higher-high/higher-low or lower-high/lower-low structure, body quality and
+   close location.
+5. **Local Pattern Match** — the latest three-candle pulse is compared with
+   earlier patterns on the same visible currency chart; the closest local
+   analogues vote separately for 2-, 3- and 5-candle outcomes.
 
-Confirmation history is stored by the visible currency name. Frames from two different currencies are never combined. A signal requires two matching recent frames for the same currency, profile, direction and expiry.
+Flat movement, abnormal range expansion and random colour whipsaw remain hard
+safety filters. A `SETUP 0-100` value is a rule-quality score, not a claimed win
+probability.
 
-### Faster eligible signals and useful WAIT output
+## Speed and per-currency behavior
 
-- current-chart checks run about every 1.25 seconds;
-- a valid setup normally appears after the second matching frame;
-- `AUTO SCAN` checks up to 12 currently visible/open assets, higher displayed payouts first;
-- a strong eligible asset is returned immediately without finishing the full queue;
-- a developing setup shows `PLEASE WAIT ~1 MIN` or `~2 MIN` with a live estimate;
-- a weak/conflicting chart stays `WAIT` and does not manufacture a signal.
+- Normal live analysis uses one snapshot; the old second-frame delay is gone.
+- Auto Scan uses one snapshot per visible currency after the chart loads.
+- Each currency is analyzed from its own visible candle history; frames from
+  different currencies are never combined.
+- A strong eligible currency can end Auto Scan early; otherwise the strongest
+  available signal is selected after the scan.
+- If no chart has a complete structure, the best current `WAIT` is shown
+  immediately rather than estimating a future signal time.
 
-The wait time is a setup-development estimate, not a promise that a signal will appear.
+## Expiry selection
 
-### Separate 2/3/5-minute rules
+- **2 minutes:** liquidity sweep or controlled short structure.
+- **3 minutes:** break/retest or stronger six-candle continuation.
+- **5 minutes:** at least 34 closed candles, persistent 12-candle structure and
+  supporting same-direction local analogues.
 
-The duration appears beside the direction, for example `UP • 3 MIN`.
+## Evidence limits
 
-- **2 minutes:** normal eligible setup or range reversal;
-- **3 minutes:** at least 29 closed candles, stronger directional lead, persistent trend and controlled volatility;
-- **5 minutes:** at least 38 closed candles with stricter long-horizon slope, persistence and trend-efficiency checks.
+This design deliberately avoids a promised win rate. Research on intraday FX
+technical rules has found that attractive in-sample rules may fail out of sample,
+and testing many variants increases backtest-overfitting risk. Candlestick
+patterns also have weak predictive evidence when used without market context.
 
-Strength alone cannot unlock 3 or 5 minutes. Use a **1-minute chart** so the displayed 2/3/5-minute demo horizon has the intended meaning.
+- Quotex short-term chart guide:
+  https://blog.qxbroker.com/updates/fast-moves-quick-results-a-step-by-step-guide-to-short-term-stock-trading/
+- Intraday FX out-of-sample study:
+  https://ideas.repec.org/p/fip/fedlwp/1999-016.html
+- Probability of Backtest Overfitting:
+  https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2326253
+- CFTC/SEC binary-options warning:
+  https://www.cftc.gov/LearnAndProtect/AdvisoriesAndArticles/fraudadv_binaryoptions.html
 
-## How chart reading works
+The local-pattern component is adaptive but is not a substitute for verified
+out-of-sample demo results. Use the app only to collect a demo trade log before
+judging performance.
 
-- the full platform page remains visible in an Android WebView;
-- Android `PixelCopy` captures only the rendered chart frame;
-- the chart crop excludes the large red/green trade controls;
-- colored candle groups are converted into approximate open/high/low/close points;
-- the rightmost still-forming candle is discarded;
-- at least 20 closed candles plus the forming candle must be visible;
-- all captured frames stay on the phone.
+## Safe use
 
-The app does not read passwords, send screenshots to a server, set an amount, click UP/DOWN, or place an order.
+1. Use the Quotex demo account only.
+2. Set the chart timeframe to one minute.
+3. Keep at least 17 candles visible.
+4. Enter only after a closed-candle signal appears; do not enter during the
+   forming candle.
+5. Record every signal, including losses. Do not use martingale.
+6. Stop testing a version if the verified demo sample does not beat the payout's
+   break-even win rate after a meaningful sample.
 
-## Research boundary
+The app never clicks an amount/direction button and never places an order. It
+does not guarantee profit or platform/legal eligibility in any jurisdiction.
 
-The adaptive design follows the general market-condition guidance in Quotex's own indicator article: trend tools for trending markets, oscillators/range tools for ranging markets, and volatility plus trend confirmation for volatile markets. It also uses the idea of time-series trend persistence as supporting research.
+## Build and test
 
-These sources do **not** prove profitable 1-minute OTC or binary-option signals:
+GitHub Actions installs Android API 35 and build-tools 35.0.0, runs the plain
+Java symmetry/safety test, builds the debug APK and uploads
+`QX-Structure-Pulse-Demo-APK-v2`.
 
-- [Quotex indicator and market-condition guide](https://blog.qxbroker.com/updates/how-to-choose-the-right-indicator-for-trading-on-quotex/)
-- [Quotex Rules of Trading Operations](https://qxbroker.com/documents/en/Rules_of_Trading_operations_QTX.pdf)
-- [Moskowitz, Ooi and Pedersen — Time Series Momentum](https://w4.stern.nyu.edu/facdir/lpederse/papers/TimeSeriesMomentum.pdf)
-- [Bailey et al. — The Probability of Backtest Overfitting](https://papers.ssrn.com/sol3/papers.cfm?abstract_id=2326253)
+The deterministic test checks:
 
-There is no verified secret “foreign high-performance Quotex strategy” that can honestly be copied into an APK. This engine is a transparent rules-based experiment, not a hidden API, exploit, cloud AI model, or guaranteed-profit system.
-
-## Platform and risk limits
-
-Quotex's current rules prohibit automated mechanisms that perform operations without the client's direct participation. This app therefore never submits a trade or touches the amount/direction controls. The user remains responsible for checking current platform terms and local law.
-
-Binary options can lose the full stake. Setup score is **not win probability**. Keep this tool on a demo account and record at least 100 forward demo observations before evaluating any profile. Do not use real money based on this display.
-
-## Deterministic engine test
-
-With JDK 17:
-
-```bash
-mkdir -p build/engine-test
-javac -d build/engine-test \
-  app/src/main/java/com/qx/adaptiveedge/SignalEngine.java \
-  engine-test/com/qx/adaptiveedge/SignalEngineSelfTest.java
-java -cp build/engine-test com.qx.adaptiveedge.SignalEngineSelfTest
-```
-
-The test covers:
-
-- mirrored trend UP/DOWN scoring;
-- trend, breakout and range-regime selection;
-- flat/choppy WAIT and volatility-shock WAIT;
-- symmetric range reversals;
-- distinct 2, 3 and 5-minute horizon gates.
-
-## Build the APK
-
-GitHub Actions runs the engine test before the Android build. Open the latest successful **Build QX Adaptive Demo APK** run and download `QX-Adaptive-Demo-APK-v1`. Unzip it and install `app-debug.apk` on Android 8.0 or newer.
-
-Because the application ID is new, installing this APK does not update or overwrite `QX Native Demo Signal`.
+- mirrored UP/DOWN behavior;
+- immediate structure-flow and liquidity-sweep signals;
+- 2-, 3- and 5-minute expiry selection; and
+- flat/whipsaw and abnormal-range `WAIT` filters.
