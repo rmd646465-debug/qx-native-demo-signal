@@ -42,6 +42,8 @@ public final class SignalEngineSelfTest {
         for (int i = 0; i < 42; i++) {
             float delta;
             if (i < 28) delta = (i % 2 == 0 ? 4f : -0.5f) * direction;
+            else if (i == 40) delta = 1f * direction;
+            else if (i == 41) delta = -1f * direction;
             else delta = (i % 2 == 1 ? 1f : -0.5f) * direction;
             price += delta;
             candles.add(new SignalEngine.CandlePoint(i * 12f, price, 2f, delta > 0));
