@@ -191,10 +191,10 @@ final class SignalEngine {
             // persistent long trend; strength alone never creates a 3m/5m call.
             int directionalLead = Math.abs(bullish - bearish);
             if (candles.size() >= 36 && winningSide >= 11 && directionalLead >= 6
-                    && trendEfficiency >= 0.48f && Math.abs(longSlope) >= 0.050f) {
+                    && trendEfficiency >= 0.48f && Math.abs(longSlope) >= 0.025f) {
                 expiryMinutes = 5;
             } else if (candles.size() >= 28 && winningSide >= 10 && directionalLead >= 5
-                    && trendEfficiency >= 0.40f && Math.abs(longSlope) >= 0.035f) {
+                    && trendEfficiency >= 0.40f && Math.abs(longSlope) >= 0.025f) {
                 expiryMinutes = 3;
             } else {
                 expiryMinutes = 2;
